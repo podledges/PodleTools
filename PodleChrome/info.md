@@ -13,6 +13,7 @@ The goal is to keep agent browser access separate from personal browsing, while 
 - `bin/agent-chromium` - launcher for dedicated Chromium profiles.
 - `config/profiles.md` - profile names, intended use, and account guidance.
 - `docs/chromium-setup-notes.md` - setup notes, safety guidance, and repository-vs-local-state explanation.
+- `docs/shopping-research-output.md` - instructions for writing shopping scout reports to the Windows `PodleShops` folder.
 
 ## Local profile storage
 
@@ -44,6 +45,22 @@ If installed on your PATH:
 ```bash
 agent-chromium research
 ```
+
+## Shopping reports
+
+Shopping scout reports should be written to:
+
+```text
+C:\Users\ayden\Documents\PodleShops
+```
+
+From Linux/Nix, that same folder is available at:
+
+```text
+/mnt/c/Users/ayden/Documents/PodleShops
+```
+
+A local ignored convenience link may exist at `PodleChrome/PodleShops`.
 
 ## What should not go here
 
