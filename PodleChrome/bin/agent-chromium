@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+show_help() {
+  cat <<'EOF'
+Usage: agent-chromium [profile] [url] [--debug-port PORT] [--] [extra Chromium args...]
+
+Launch a dedicated Chromium profile for agent workflows.
+
+Profiles:
+  research           General web research and low-risk logged-in sites.
+  shopping           Retail, orders, receipts, and price checks.
+  finance-readonly   Financial dashboards only when you intentionally log in with read-only or low-risk access.
+  testing            Disposable web-app testing and local development flows.
+
+Defaults:
+  profile: research
+  url:     about:blank
+
+Environment:
+  AGENT_CHROMIUM_ROOT   Override profile root. Default: $HOME/.agent-browser/chromium-profiles
+  AGENT_CHROMIUM_BIN    Override Chromium binary. Default: first chromium/chromium-browser/google-chrome on PATH
+  AGENT_CHROMIUM_PORT   Enable remote debugging on this port unless --debug-port is supplied
+
+Examples:
+  agent-chromium
+  agent-chromium research https://example.com
+  agent-chromium testing --debug-port 9222 http://localhost:3000
+EOF
+}
+
+profile="research"
+url="about:blank"
+debug_port="${AGENT_CHROMIUM_PORT:-}"
+extra_args=()
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  show_help
+  exit 0
+fi
+
+if [[ $# -gt 0 && "${1:-}" != --* ]]; then
+  profile="$1"
+  shift
+fi
+
+if [[ $# -gt 0 && "${1:-}" != --* ]]; then
+  url="$1"
+  shift
+fi
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --debug-port)
+      if [[ $# -lt 2 ]]; then
+        echo "agent-chromium: --debug-port requires a port" >&2
+        exit 2
+      fi
+      debug_port="$2"
+      shift 2
+      ;;
+    --)
+      shift
+      extra_args+=("$@")
+      break
+      ;;
+    *)
+      extra_args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+case "$profile" in
+  research|shopping|finance-readonly|testing) ;;
+  *)
+    echo "agent-chromium: unknown profile '$profile'" >&2
+    echo "Allowed profiles: research, shopping, finance-readonly, testing" >&2
+    exit 2
+    ;;
+esac
+
+chromium_bin="${AGENT_CHROMIUM_BIN:-}"
+if [[ -z "$chromium_bin" ]]; then
+  for candidate in chromium chromium-browser google-chrome; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      chromium_bin="$(command -v "$candidate")"
+      break
+    fi
+  done
+fi
+
+if [[ -z "$chromium_bin" ]]; then
+  echo "agent-chromium: could not find chromium, chromium-browser, or google-chrome on PATH" >&2
+  exit 127
+fi
+
+profile_root="${AGENT_CHROMIUM_ROOT:-$HOME/.agent-browser/chromium-profiles}"
+user_data_dir="$profile_root/$profile"
+mkdir -p "$user_data_dir"
+
+args=(
+  --user-data-dir="$user_data_dir"
+  --no-first-run
+  --no-default-browser-check
+  --password-store=basic
+)
+
+if [[ -n "$debug_port" ]]; then
+  args+=(--remote-debugging-port="$debug_port")
+fi
+
+exec "$chromium_bin" "${args[@]}" "${extra_args[@]}" "$url"
