@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Bot Trust natural-language probability filter.
+# Usage: bot-trust-filter <request>
+#
+# Language-matching rules live in config/natural-language-filters.json.
+# A non-match exits 1 without output or helper invocation. This filter may
+# influence wording and idea surfacing, but authorizes no action.
+set -eu
+
+if [ "$#" -ne 1 ]; then
+  printf 'usage: %s <request>\n' "${0##*/}" >&2
+  exit 2
+fi
+
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
+filters_file="$script_dir/../config/natural-language-filters.json"
+request=$1
+percentage=$(python3 - "$filters_file" "$request" <<'PY'
+import json
+import re
+import sys
+
+filters_path, text = sys.argv[1], sys.argv[2].strip()
+if not text:
+    raise SystemExit(1)
+
+try:
+    with open(filters_path, encoding="utf-8") as stream:
+        filters = json.load(stream)
+except (OSError, json.JSONDecodeError) as exc:
+    print(f"bot-trust-filter: cannot load filters: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+
+flags = re.IGNORECASE
+try:
+    percentages = re.findall(filters["percentage_pattern"], text, flags)
+    is_bare = re.fullmatch(filters["bare_percentage_pattern"], text, flags)
+    probability_cue = any(re.search(pattern, text, flags) for pattern in filters["probability_cues"])
+    random_choice_cue = any(re.search(pattern, text, flags) for pattern in filters["random_choice_cues"])
+    decision_request_cue = any(re.search(pattern, text, flags) for pattern in filters["decision_request_cues"])
+except (KeyError, TypeError, re.error) as exc:
+    print(f"bot-trust-filter: invalid filter declaration: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+
+# A bare percentage is an unambiguous exact probability input.
+if is_bare:
+    print(percentages[0][0] + "%")
+    raise SystemExit(0)
+
+# Natural language needs one exact percentage, a probability or random-choice
+# cue, and an explicit request to make a randomized decision.
+if len(percentages) != 1:
+    raise SystemExit(1)
+if not (probability_cue or random_choice_cue) or not decision_request_cue:
+    raise SystemExit(1)
+
+print(percentages[0][0] + "%")
+PY
+) || exit $?
+
+exec "$script_dir/bot-trust" -- "$percentage"
