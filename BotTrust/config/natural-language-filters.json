@@ -1,0 +1,16 @@
+{
+  "percentage_pattern": "(?<![\\w.])([+-]?\\d+(?:\\.\\d+)?)\\s*(%|percent)(?![\\w%])",
+  "bare_percentage_pattern": "[+-]?\\d+(?:\\.\\d+)?\\s*(?:%|percent)",
+  "probability_cues": [
+    "\\b(?:chance|probability|odds|likelihood)\\b"
+  ],
+  "random_choice_cues": [
+    "\\b(?:flip(?:ping)?(?:\\s+(?:a|the))?\\s+coin|roll(?:ing)?|choose|pick|decide)\\b[^.!?]*\\brandom(?:ly|ized)?\\b",
+    "\\brandom(?:ly|ized)?\\b[^.!?]*\\b(?:choose|pick|decide)\\b"
+  ],
+  "decision_request_cues": [
+    "(?:^|[.!?]\\s+)(?:(?:please|kindly)\\s+)?(?:flip(?:\\s+(?:a|the))?\\s+coin|flip|roll|choose|pick|decide|randomize)\\b",
+    "\\b(?:can|could|would|will)\\s+you\\s+(?:flip(?:\\s+(?:a|the))?\\s+coin|flip|roll|choose|pick|decide|randomize)\\b",
+    "\\b(?:should|shall)\\s+(?:we|i)\\s+(?:flip(?:\\s+(?:a|the))?\\s+coin|flip|roll|choose|pick|decide|randomize)\\b"
+  ]
+}
