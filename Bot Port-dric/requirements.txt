@@ -1,1 +1,0 @@
-# Bot Port-dric has no third-party runtime dependencies.

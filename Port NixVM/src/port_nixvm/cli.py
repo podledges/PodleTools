@@ -1,4 +1,4 @@
-"""Command-line interface for the Bot Port-dric hello/ack handshake."""
+"""Command-line interface for the Port NixVM hello/ack precursor."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def send_hello(host: str, port: int, timeout: float) -> None:
         connection.settimeout(timeout)
         connection.sendall(HELLO)
         if _receive_line(connection) != ACK:
-            raise HandshakeError("peer did not return the Bot Port-dric acknowledgement")
+            raise HandshakeError("peer did not return the Port NixVM acknowledgement")
 
 
 def listen(host: str, port: int, timeout: float, once: bool) -> None:
@@ -81,8 +81,8 @@ def listen(host: str, port: int, timeout: float, once: bool) -> None:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="bot-portdric",
-        description="Exchange a minimal hello/ack over a loopback TCP socket.",
+        prog="port-nixvm",
+        description="Exchange the Port NixVM precursor hello/ack over loopback TCP.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -111,7 +111,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("ack")
         return 0
     except (HandshakeError, OSError, ValueError) as exc:
-        print(f"bot-portdric: {exc}", file=sys.stderr)
+        print(f"port-nixvm: {exc}", file=sys.stderr)
         return 1
 
 
