@@ -1,8 +1,8 @@
 # Port NixVM
 
-Port NixVM is a small, separately packaged localhost communication tool. It currently provides only the precursor versioned `hello`/`ack` TCP handshake, enough for one local process to signal that it is awake. It is deliberately not an RPC framework and carries no commands or arbitrary payloads.
+Port NixVM is a small, separately packaged localhost communication tool. It currently provides only the precursor versioned `hello`/`ack` TCP handshake on `127.0.0.1:47123`, enough for one local process to signal that it is awake. It is deliberately not an RPC framework and carries no commands or arbitrary payloads.
 
-The v1 crossed-duplex contract is specified separately in `../NixSpec/`, `../PodleMale/`, and `../PodleFemale/`; this package does not implement that duplex bridge.
+The v1 crossed-duplex handshake is `PORT-NIXVM/1 HELLO` / `PORT-NIXVM/1 ACK-HELLO` in `../PodleMale/` and `../PodleFemale/`. This precursor package does not implement that duplex.
 
 A future bounded Windows helper, such as `Bot Handy/`, may use this handshake. Neither tool depends on the other.
 
