@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "port-nixvm"
+version = "0.1.0"
+description = "Port NixVM loopback hello/ack precursor transport"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+port-nixvm = "port_nixvm.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

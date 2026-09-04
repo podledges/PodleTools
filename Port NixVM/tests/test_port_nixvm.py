@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from bot_portdric.cli import ACK, HELLO, HandshakeError, _loopback_address, _receive_line
+from port_nixvm.cli import ACK, HELLO, HandshakeError, _loopback_address, _receive_line
 
 
 class ProtocolTests(unittest.TestCase):
@@ -33,7 +33,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_cli_completes_hello_ack(self) -> None:
         command = [
-            str(ROOT / "bin" / "bot-portdric"),
+            str(ROOT / "bin" / "port-nixvm"),
             "listen",
             "--port",
             "0",
@@ -51,7 +51,7 @@ class ProtocolTests(unittest.TestCase):
         port = listening.rsplit(":", 1)[1]
 
         client = subprocess.run(
-            [str(ROOT / "bin" / "bot-portdric"), "hello", "--port", port],
+            [str(ROOT / "bin" / "port-nixvm"), "hello", "--port", port],
             check=False,
             capture_output=True,
             text=True,

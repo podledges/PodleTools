@@ -3,3 +3,8 @@ PodleChrome/PodleShops
 PodleChrome/local/
 PodleChrome/profiles/
 PodleChrome/user-data/
+
+docs/
+
+__pycache__/
+*.pyc

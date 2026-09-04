@@ -3,15 +3,15 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "bot-portdric"
+name = "podlefemale"
 version = "0.1.0"
-description = "Minimal loopback hello/ack transport for local tools"
+description = "Nix RX loopback hook for the Port NixVM v1 duplex"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
 
 [project.scripts]
-bot-portdric = "bot_portdric.cli:main"
+podlefemale = "podlefemale.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

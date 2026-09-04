@@ -2,7 +2,7 @@
 
 Bot Handy is a placeholder for a future bounded Windows-side helper. It is a sibling tool, separately packaged and decoupled from every other PodleTools tool.
 
-It may later use `Bot Port-dric/` for a minimal localhost wake-up handshake, but Bot Handy must not require Bot Port-dric merely to exist as its own tool. No Handy settings are created or rewritten by this scaffold.
+It may later use `Port NixVM/` for a minimal localhost wake-up handshake, but Bot Handy must not require Port NixVM merely to exist as its own tool. No Handy settings are created or rewritten by this scaffold.
 
 ## Safety boundary
 
