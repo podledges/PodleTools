@@ -10,7 +10,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from port_nixvm.cli import ACK, HELLO, HandshakeError, _loopback_address, _receive_line
+from port_nixvm.cli import (
+    ACK,
+    DEFAULT_PORT,
+    HELLO,
+    HandshakeError,
+    _loopback_address,
+    _parser,
+    _receive_line,
+)
 
 
 class ProtocolTests(unittest.TestCase):
@@ -25,6 +33,11 @@ class ProtocolTests(unittest.TestCase):
         sender.sendall(b"x" * 65)
         with self.assertRaises(HandshakeError):
             _receive_line(receiver)
+
+    def test_default_and_explicit_ports(self) -> None:
+        self.assertEqual(DEFAULT_PORT, 16929)
+        self.assertEqual(_parser().parse_args(["listen"]).port, 16929)
+        self.assertEqual(_parser().parse_args(["hello", "--port", "2969"]).port, 2969)
 
     def test_non_loopback_bind_is_rejected(self) -> None:
         with self.assertRaises(argparse.ArgumentTypeError):

@@ -2,7 +2,7 @@
 
 Nix TX hook for the Port NixVM v1 crossed duplex. It publishes a loopback `PORT-NIXVM/1 HELLO` toward Windows PodleFemale and requires `PORT-NIXVM/1 ACK-HELLO`. It does not execute Windows diagnostics.
 
-This tool stays separate from the other PodleTools. The 47123 hello/ack precursor in `../Port NixVM/` is not the v1 duplex contract.
+This tool stays separate from the other PodleTools. The 16929 hello/ack precursor in `../Port NixVM/` is not the v1 duplex contract.
 
 ## v1 direction
 
