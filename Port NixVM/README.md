@@ -1,6 +1,6 @@
 # Port NixVM
 
-Port NixVM is a small, separately packaged localhost communication tool. It currently provides only the precursor versioned `hello`/`ack` TCP handshake on `127.0.0.1:47123`, enough for one local process to signal that it is awake. It is deliberately not an RPC framework and carries no commands or arbitrary payloads.
+Port NixVM is a small, separately packaged localhost communication tool. It currently provides only the precursor versioned `hello`/`ack` TCP handshake on `127.0.0.1:16929`, enough for one local process to signal that it is awake. It is deliberately not an RPC framework and carries no commands or arbitrary payloads.
 
 The v1 crossed-duplex handshake is `PORT-NIXVM/1 HELLO` / `PORT-NIXVM/1 ACK-HELLO` in `../PodleMale/` and `../PodleFemale/`. This precursor package does not implement that duplex.
 
@@ -31,7 +31,7 @@ Directly from this repository (quote the path because the folder name contains a
 'Port NixVM/bin/port-nixvm' hello
 ```
 
-Both commands use `127.0.0.1:47123` by default. `listen` continues serving until interrupted unless `--once` is supplied. Run `--help` to see timeout, host, and port options. Hosts are restricted to loopback addresses; wildcard and LAN binds are rejected.
+Both commands use `127.0.0.1:16929` by default. `listen` continues serving until interrupted unless `--once` is supplied. Run `--help` to see timeout, host, and port options. Hosts are restricted to loopback addresses; wildcard and LAN binds are rejected.
 
 To install the independent command in a virtual environment:
 

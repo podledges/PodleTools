@@ -10,7 +10,7 @@ NixOS/VM-side roles and trigger-loading rules for the Port NixVM crossed duplex.
 - v1 handshake: client `PORT-NIXVM/1 HELLO`, listener `PORT-NIXVM/1 ACK-HELLO`, loopback only.
 - v1 does not execute Windows diagnostics on Nix.
 
-The 47123 hello/ack exchange in `../Port NixVM/` is a precursor only and is not the v1 duplex contract.
+The 16929 hello/ack exchange in `../Port NixVM/` is a precursor only and is not the v1 duplex contract.
 
 ## Trigger loading
 
