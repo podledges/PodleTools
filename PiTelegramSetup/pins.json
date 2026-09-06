@@ -1,0 +1,15 @@
+{
+  "package": "@llblab/pi-telegram",
+  "version": "0.44.0",
+  "npm_spec": "npm:@llblab/pi-telegram@0.44.0",
+  "tarball_sha256": "81b1e3a1897ce0a2b465c5bce5114b2f1f86287ac56d12feca6f6df89ac88d73",
+  "npm_integrity": "sha512-YYqLa/HOP0mDYSysV5UfD7ufs9QtcFSe6cdHSNDAk/6RoMVysz7CEYUqdguZhGOTEo3+EqIbdySJ2L+toom6xw==",
+  "git_revision": "c94505b31caa436ec0dc8645d488b5d41e42da08",
+  "minimum_node": "22.19.0",
+  "minimum_pi": "0.84.4",
+  "inspected_files": {
+    "package/package.json": "3438bf41e65dd68a10cb271ce1dbfdc4fd02ac1f7512fd89c941ef1253316e98",
+    "package/index.ts": "46fd1381f59dd73d9c500b986c32170d2b440d739f6025fd3da7d75695c8ec25",
+    "package/scripts/check-downgrade.mjs": "105e34d10920de95aa27f782ef31266cef16faf7dc45050e972017df93162463"
+  }
+}

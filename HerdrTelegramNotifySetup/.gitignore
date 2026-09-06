@@ -1,0 +1,4 @@
+.prepared/
+.env
+*.local
+state/

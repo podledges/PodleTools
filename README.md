@@ -19,3 +19,8 @@ Add each tool in its own directory with a short README that explains:
 - whether it is safe for agents to use directly
 
 Avoid storing secrets, tokens, private keys, or production credentials in this repository.
+
+## Tools
+
+- [`PiTelegramSetup/`](PiTelegramSetup/) — prepare and inspect a pinned Pi Telegram package without installing or connecting it.
+- [`HerdrTelegramNotifySetup/`](HerdrTelegramNotifySetup/) — prepare and inspect a pinned Herdr outbound Telegram notification plugin without activating it.

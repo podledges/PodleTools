@@ -1,0 +1,4 @@
+.prepared/
+*.local
+telegram.json
+.env
