@@ -1,0 +1,18 @@
+{
+  "repository": "https://github.com/ogulcancelik/herdr-plugin-examples.git",
+  "source": "ogulcancelik/herdr-plugin-examples/agent-telegram-notify",
+  "subdirectory": "agent-telegram-notify",
+  "revision": "18709cdc851dd63ed0543eb8388343a5446fd8d8",
+  "plugin_id": "examples.agent-telegram-notify",
+  "plugin_version": "0.1.0",
+  "minimum_herdr": "0.7.0",
+  "minimum_node": "18.0.0",
+  "inspected_files": {
+    ".env.example": "092ab09442845def6516b04f6e392c8f0a1c240f447f7b9e89a42a5a672c85ff",
+    "README.md": "cb2812ef9e1aa903051a1bb3bc20e2918e786a772a04016365d7ae5882133758",
+    "herdr-plugin.toml": "26625d5eeba264357445d8d1cf369ebe7c08625b073e89461749c3ca02e26988",
+    "lib.mjs": "e62e4ed5413872165af64c81108aedd5aacf2785cefa5bc4fda0943eb1f5142a",
+    "notify.mjs": "5cfb07b271990c3684d053ca07dd0b8ca50038005494ed9dd0cd4f345ad515eb",
+    "toggle.mjs": "e87fb39e45364146647558a499b4d1b5449fe11fee4b3a8773e1152e913dac16"
+  }
+}
