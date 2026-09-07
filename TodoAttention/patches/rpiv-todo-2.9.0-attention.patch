@@ -1,0 +1,402 @@
+diff --git a/README.md b/README.md
+index e1ad737..b70aa35 100644
+--- a/README.md
++++ b/README.md
+@@ -57,6 +57,10 @@ by status.
+ - **The overlay never eats your terminal.** Past the row budget it drops
+   completed tasks first, truncates unfinished ones last, and tells you what it
+   hid with `+3 more (2 completed, 1 pending)`.
++- **Attention is explicit, not title decoration.** Every outstanding id has a
++  renderer-owned `●`: neutral for waiting/unknown, neon blue `#0066FF` only for
++  explicit active work, and the theme accent for captain input. See
++  [Overlay and `/todos`](docs/overlay.md) for metadata and transition rules.
+ - **The agent can sequence work, not just list it.** `blockedBy` dependencies are
+   validated before anything is written — dangling ids, deleted dependencies,
+   self-blocks, and cycles are all rejected.
+diff --git a/docs/overlay.md b/docs/overlay.md
+index 81c2b31..946649d 100644
+--- a/docs/overlay.md
++++ b/docs/overlay.md
+@@ -26,24 +26,29 @@ and taking the last `todo` tool result's snapshot, which replaces the whole list
+ 
+ ```
+ ● Todos (2/5)
+-├─ ✓ Create DemoTodo domain entity
+-├─ ✓ Create IDemoTodoRepository interface
+-├─ ◐ Create DemoTodoRepository (creating the repository)
+-├─ ○ Register DI bindings
+-└─ ○ Add integration tests
++├─ ✓ #1 Create DemoTodo domain entity
++├─ ✓ #2 Create IDemoTodoRepository interface
++├─ ◐ #3 ● Create DemoTodoRepository (creating the repository)
++├─ ○ #4 ● Register DI bindings
++└─ ○ #5 ● Add integration tests
+ ```
+ 
+ - **Heading** — `● Todos (done/total)` in the accent color while any task is
+   `pending` or `in_progress`; `○ Todos (done/total)` dimmed once everything is
+   completed.
+-- **Glyphs** — `○` pending, `◐` in_progress, `✓` completed, `✗` deleted.
+-  Completed and deleted subjects render dim and struck through.
++- **Status glyphs** — `○` pending, `◐` in_progress, `✓` completed, `✗`
++  deleted. Completed and deleted subjects render dim and struck through.
++- **Attention indicator** — the text glyph `●` appears beside every outstanding
++  task id. Neutral means waiting, blocked, stale, or unknown; neon blue
++  `#0066FF` means `in_progress` plus `metadata.attention="agent-working"` and no
++  `blockedBy`; hot pink uses the active theme's `accent` (neon-afterglow:
++  `#ff00cc`) for `metadata.attention="captain-input"`. Completed/deleted rows
++  have no attention indicator and keep their existing completion presentation.
+ - **activeForm** — appended dim in parentheses, only while the task is
+   `in_progress`.
+ - **Dependencies** — appended as `⛓ #1,#2` when the task has a `blockedBy` set.
+-- **`#id` prefix** — shown on every row only when at least one visible task
+-  carries a `blockedBy`. Without a `⛓ #N` anywhere, the per-row ids have nothing
+-  to point at, so they are omitted.
++- **`#id` prefix** — shown on every row so the adjacent attention indicator is
++  always anchored to an unambiguous task number.
+ - **Prefixes** — `├─` on each row, `└─` on the last one. A blank spacer line is
+   always appended below the panel so it is not flush against the input box.
+ 
+@@ -93,12 +98,12 @@ row budget and auto-hiding:
+ ```
+ 2/7 completed · 1 in progress · 4 pending
+ ── Pending ──
+-  ○ #4 Register DI bindings
+-  ○ #5 Add integration tests    ⛓ #4
+-  ○ #6 Wire up the HTTP endpoint
+-  ○ #7 Update the API docs
++  ○ #4 ● Register DI bindings
++  ○ #5 ● Add integration tests    ⛓ #4
++  ○ #6 ● Wire up the HTTP endpoint
++  ○ #7 ● Update the API docs
+ ── In Progress ──
+-  ◐ #3 Create DemoTodoRepository (creating the repository)
++  ◐ #3 ● Create DemoTodoRepository (creating the repository)
+ ── Completed ──
+   ✓ #1 Create DemoTodo domain entity
+   ✓ #2 Create IDemoTodoRepository interface
+diff --git a/docs/tool-schema.md b/docs/tool-schema.md
+index bc82d03..1ffc5d7 100644
+--- a/docs/tool-schema.md
++++ b/docs/tool-schema.md
+@@ -51,6 +51,27 @@ for a key removes it, and emptying the record drops the field entirely.
+ `addBlockedBy` and `removeBlockedBy` are additive — do not resend the whole
+ array.
+ 
++### Attention metadata
++
++Renderers classify outstanding tasks from structured state, never title text:
++
++- `metadata.attention="captain-input"` requests captain input and renders hot
++  pink using the theme accent.
++- `status="in_progress"` together with
++  `metadata.attention="agent-working"` and no `blockedBy` asserts that the agent
++  is actually working and renders neon blue `#0066FF`.
++- `metadata.attention="waiting"`, missing/unknown attention, pending status,
++  and blocked tasks render neutral. A stale `in_progress` status alone is never
++  blue.
++
++When a captain answers, clear `captain-input` by setting `attention` to
++`waiting`; only change it to `agent-working` in the same update that starts
++actual work. Before pausing, blocking, or handing control back, set `attention`
++to `waiting` (and move `in_progress` back to `pending` when appropriate).
++Completed/deleted tasks have no attention indicator. A legacy leading `● `
++title workaround is normalized away on create, subject update, or replay;
++the rest of the semantic title is preserved.
++
+ ## Status transitions
+ 
+ | From | Allowed targets |
+diff --git a/state/replay.ts b/state/replay.ts
+index eec9425..190b796 100644
+--- a/state/replay.ts
++++ b/state/replay.ts
+@@ -1,3 +1,4 @@
++import { normalizeLegacyTitleMarker } from "../tool/sanitize.js";
+ import type { TaskDetails } from "../tool/types.js";
+ import { EMPTY_STATE, type TaskState } from "./state.js";
+ 
+@@ -30,7 +31,7 @@ export function replayFromBranch(ctx: { sessionManager: { getBranch(): Iterable<
+ 		if (msg?.role !== "toolResult" || msg.toolName !== "todo") continue;
+ 		if (!isTaskDetails(msg.details)) continue;
+ 		result = {
+-			tasks: msg.details.tasks.map((t) => ({ ...t })),
++			tasks: msg.details.tasks.map((t) => ({ ...t, subject: normalizeLegacyTitleMarker(t.subject) })),
+ 			nextId: msg.details.nextId,
+ 		};
+ 	}
+diff --git a/state/selectors.ts b/state/selectors.ts
+index 7635a75..f7b3519 100644
+--- a/state/selectors.ts
++++ b/state/selectors.ts
+@@ -43,12 +43,11 @@ export function selectTodoCounts(state: TaskState): TodoCounts {
+ }
+ 
+ /**
+- * Whether any visible task carries a `blockedBy` reference. The overlay uses
+- * this to gate the `#id` prefix on per-task rows — without at least one
+- * `⛓ #N` suffix, the per-row id has no anchor.
++ * IDs anchor renderer-owned attention indicators, so every visible task keeps
++ * its number even when the dependency graph is empty.
+  */
+ export function selectShowTaskIds(state: TaskState): boolean {
+-	return selectVisibleTasks(state).some((t) => t.blockedBy && t.blockedBy.length > 0);
++	return selectVisibleTasks(state).length > 0;
+ }
+ 
+ /**
+diff --git a/state/state-reducer.ts b/state/state-reducer.ts
+index 0df4ba1..70e3df0 100644
+--- a/state/state-reducer.ts
++++ b/state/state-reducer.ts
+@@ -1,3 +1,4 @@
++import { normalizeLegacyTitleMarker } from "../tool/sanitize.js";
+ import type { Task, TaskAction, TaskMutationParams, TaskStatus } from "../tool/types.js";
+ import { isTransitionValid } from "./invariants.js";
+ import type { TaskState } from "./state.js";
+@@ -90,7 +91,7 @@ export function applyTaskMutation(state: TaskState, action: TaskAction, params:
+ 			}
+ 			const newTask: Task = {
+ 				id: state.nextId,
+-				subject: params.subject,
++				subject: normalizeLegacyTitleMarker(params.subject),
+ 				status: "pending",
+ 			};
+ 			if (params.description) newTask.description = params.description;
+@@ -164,7 +165,7 @@ export function applyTaskMutation(state: TaskState, action: TaskAction, params:
+ 			}
+ 
+ 			const updated: Task = { ...current, status: newStatus };
+-			if (params.subject !== undefined) updated.subject = params.subject;
++			if (params.subject !== undefined) updated.subject = normalizeLegacyTitleMarker(params.subject);
+ 			if (params.description !== undefined) updated.description = params.description;
+ 			if (params.activeForm !== undefined) updated.activeForm = params.activeForm;
+ 			if (params.owner !== undefined) updated.owner = params.owner;
+diff --git a/todo.ts b/todo.ts
+index 55420d2..593cb71 100644
+--- a/todo.ts
++++ b/todo.ts
+@@ -62,6 +62,7 @@ export const DEFAULT_PROMPT_GUIDELINES: string[] = [
+ 	"Use blockedBy to express dependencies (A is blocked by B). On create, pass blockedBy as the initial set. On update, use addBlockedBy / removeBlockedBy (additive merge — do not resend the full array). Cycles are rejected.",
+ 	"list hides tombstoned (deleted) tasks by default; pass includeDeleted:true to see them. Pass status to filter by a single status.",
+ 	"Subject must be short and imperative (e.g. 'Research existing tool'); description is for long-form detail. activeForm is a present-continuous label shown while in_progress.",
++	"Set metadata.attention to captain-input only while a captain answer is required. Set it to agent-working together with in_progress only while work is actually underway; clear or set waiting before pausing, blocking, or handing back. Unknown attention renders as waiting.",
+ ];
+ 
+ export function registerTodoTool(pi: ExtensionAPI): void {
+@@ -128,15 +129,15 @@ export function registerTodosCommand(pi: ExtensionAPI): void {
+ 			const lines: string[] = [header.join(" · ")];
+ 			if (groups.pending.length > 0) {
+ 				lines.push(t("command.section.pending", SECTION_PENDING));
+-				for (const task of groups.pending) lines.push(formatCommandTaskLine(task, "○"));
++				for (const task of groups.pending) lines.push(formatCommandTaskLine(task, "○", ctx.ui.theme));
+ 			}
+ 			if (groups.inProgress.length > 0) {
+ 				lines.push(t("command.section.in_progress", SECTION_IN_PROGRESS));
+-				for (const task of groups.inProgress) lines.push(formatCommandTaskLine(task, "◐"));
++				for (const task of groups.inProgress) lines.push(formatCommandTaskLine(task, "◐", ctx.ui.theme));
+ 			}
+ 			if (groups.completed.length > 0) {
+ 				lines.push(t("command.section.completed", SECTION_COMPLETED));
+-				for (const task of groups.completed) lines.push(formatCommandTaskLine(task, "✓"));
++				for (const task of groups.completed) lines.push(formatCommandTaskLine(task, "✓", ctx.ui.theme));
+ 			}
+ 
+ 			ctx.ui.notify(lines.join("\n"), "info");
+diff --git a/tool/sanitize.ts b/tool/sanitize.ts
+index cbb59e5..d4e43ce 100644
+--- a/tool/sanitize.ts
++++ b/tool/sanitize.ts
+@@ -5,6 +5,16 @@
+  * become spaces so task fields cannot change the layout, and bidi controls
+  * are removed so a field cannot reorder how neighbouring output reads.
+  */
++/**
++ * Remove the legacy plain-title attention marker without treating an
++ * intentional marker-only subject as empty. The old workaround prepended one
++ * or more `● ` tokens; renderer-owned indicators now carry the decoration.
++ */
++export function normalizeLegacyTitleMarker(value: string): string {
++	const normalized = value.replace(/^\s*(?:●\s+)+/, "");
++	return normalized.trim().length > 0 ? normalized : value;
++}
++
+ export function sanitizeTerminalText(value: string): string {
+ 	return (
+ 		value
+diff --git a/view/format.ts b/view/format.ts
+index 605c100..cad2157 100644
+--- a/view/format.ts
++++ b/view/format.ts
+@@ -3,7 +3,7 @@ import { Text } from "@earendil-works/pi-tui";
+ import { formatStatusLabel } from "../state/i18n-bridge.js";
+ import { selectTaskSubjectById } from "../state/selectors.js";
+ import type { TaskState } from "../state/state.js";
+-import { sanitizeTerminalText } from "../tool/sanitize.js";
++import { normalizeLegacyTitleMarker, sanitizeTerminalText } from "../tool/sanitize.js";
+ import type { Task, TaskAction, TaskDetails, TaskMutationParams, TaskStatus } from "../tool/types.js";
+ 
+ // Re-export so legacy import paths (todo.ts, tests) continue to resolve;
+@@ -46,6 +46,54 @@ export const ACTION_GLYPH: Record<TaskAction, string> = {
+ 	clear: "∅",
+ };
+ 
++export type AttentionClass = "waiting" | "agent-working" | "captain-input";
++
++/** Neon blue chosen for active work on neon-afterglow's #06040f background. */
++export const ACTIVE_BLUE_RGB = [0, 102, 255] as const;
++export const ACTIVE_BLUE_HEX = "#0066FF";
++
++/**
++ * Classify only outstanding tasks. Captain input is explicit and wins. Active
++ * blue requires both in_progress and an explicit agent-working assertion; a
++ * pending, blocked, stale, or unknown task remains neutral.
++ */
++export function classifyAttention(task: Task): AttentionClass | undefined {
++	if (task.status === "completed" || task.status === "deleted") return undefined;
++	if (task.metadata?.attention === "captain-input") return "captain-input";
++	if (
++		task.status === "in_progress" &&
++		task.metadata?.attention === "agent-working" &&
++		(task.blockedBy?.length ?? 0) === 0
++	) {
++		return "agent-working";
++	}
++	return "waiting";
++}
++
++function truecolor(rgb: readonly [number, number, number], text: string): string {
++	return `\u001b[38;2;${rgb.join(";")}m${text}\u001b[39m`;
++}
++
++/** The one renderer-owned attention glyph, styled from structured task data. */
++export function formatAttentionIndicator(task: Task, theme: Theme): string {
++	switch (classifyAttention(task)) {
++		case "captain-input":
++			return theme.fg("accent", "●");
++		case "agent-working":
++			return truecolor(ACTIVE_BLUE_RGB, "●");
++		case "waiting":
++			return theme.fg("dim", "●");
++		case undefined:
++			return "";
++	}
++}
++
++function formatTaskIdWithAttention(task: Task, theme: Theme): string {
++	const id = theme.fg("dim", `#${task.id}`);
++	const indicator = formatAttentionIndicator(task, theme);
++	return indicator ? `${id} ${indicator}` : id;
++}
++
+ /**
+  * Glyph for the persistent overlay's per-task row. Differs from `STATUS_GLYPH`
+  * for `completed` (`✓` vs `●`) and `deleted` (`✗` vs `⊘`) because the
+@@ -73,12 +121,12 @@ export function formatOverlayTaskLine(t: Task, theme: Theme, showId: boolean): s
+ 	const glyph = overlayStatusGlyph(t.status, theme);
+ 	const subjectColor =
+ 		t.status === "in_progress" ? "accent" : t.status === "completed" || t.status === "deleted" ? "muted" : "text";
+-	let subject = theme.fg(subjectColor, sanitizeTerminalText(t.subject));
++	let subject = theme.fg(subjectColor, sanitizeTerminalText(normalizeLegacyTitleMarker(t.subject)));
+ 	if (t.status === "completed" || t.status === "deleted") {
+ 		subject = theme.strikethrough(subject);
+ 	}
+ 	let line = `${glyph}`;
+-	if (showId) line += ` ${theme.fg("dim", `#${t.id}`)}`;
++	if (showId) line += ` ${formatTaskIdWithAttention(t, theme)}`;
+ 	line += ` ${subject}`;
+ 	if (t.status === "in_progress" && t.activeForm) {
+ 		line += ` ${theme.fg("muted", `(${sanitizeTerminalText(t.activeForm)})`)}`;
+@@ -89,14 +137,12 @@ export function formatOverlayTaskLine(t: Task, theme: Theme, showId: boolean): s
+ 	return line;
+ }
+ 
+-/**
+- * Format a single task line for the `/todos` slash command (no glyph color,
+- * indented bullet prefix). Pre-refactor `todo.ts:670-674`.
+- */
+-export function formatCommandTaskLine(t: Task, glyph: string): string {
++/** Format a themed task line for `/todos` and detailed tool results. */
++export function formatCommandTaskLine(t: Task, glyph: string, theme: Theme): string {
+ 	const form = t.status === "in_progress" && t.activeForm ? ` (${sanitizeTerminalText(t.activeForm)})` : "";
+ 	const block = t.blockedBy?.length ? `    ⛓ ${t.blockedBy.map((id) => `#${id}`).join(",")}` : "";
+-	return `  ${glyph} #${t.id} ${sanitizeTerminalText(t.subject)}${form}${block}`;
++	const subject = sanitizeTerminalText(normalizeLegacyTitleMarker(t.subject));
++	return `  ${glyph} ${formatTaskIdWithAttention(t, theme)} ${subject}${form}${block}`;
+ }
+ 
+ // ---------------------------------------------------------------------------
+@@ -117,7 +163,7 @@ export function renderTodoCall(
+ 	let text = theme.fg("toolTitle", theme.bold("todo ")) + theme.fg("muted", glyph);
+ 
+ 	if (args.action === "create" && args.subject) {
+-		text += ` ${theme.fg("dim", sanitizeTerminalText(args.subject))}`;
++		text += ` ${theme.fg("dim", sanitizeTerminalText(normalizeLegacyTitleMarker(args.subject)))}`;
+ 	} else if (
+ 		(args.action === "update" || args.action === "get" || args.action === "delete") &&
+ 		args.id !== undefined
+@@ -130,35 +176,38 @@ export function renderTodoCall(
+ 	return new Text(text, 0, 0);
+ }
+ 
+-/**
+- * `renderResult` body. Inspects `details` to pick the per-action status echo
+- * (only `create`/`update`/`delete` advertise a status; `list`/`get`/`clear`
+- * fall back to plain `✓`). Identical visual output to pre-refactor
+- * `todo.ts:533-565`.
+- */
++/** Render compact mutations and themed list/get details from persisted task data. */
+ export function renderTodoResult(result: { details?: unknown }, theme: Theme): Text {
+ 	const details = result.details as TaskDetails | undefined;
+-	let status: TaskStatus | undefined;
+-	if (details) {
+-		const params = details.params as TaskMutationParams;
+-		switch (details.action) {
+-			case "create":
+-				status = details.tasks[details.tasks.length - 1]?.status;
+-				break;
+-			case "update":
+-				status = params.status ?? details.tasks.find((t) => t.id === params.id)?.status;
+-				break;
+-			case "delete":
+-				status = details.tasks.find((t) => t.id === params.id)?.status;
+-				break;
+-			case "list":
+-			case "get":
+-			case "clear":
+-				break;
+-		}
++	if (!details) return new Text(theme.fg("success", "✓"), 0, 0);
++	const params = details.params as TaskMutationParams;
++
++	if (details.action === "list") {
++		let tasks = params.includeDeleted === true ? details.tasks : details.tasks.filter((task) => task.status !== "deleted");
++		if (params.status) tasks = tasks.filter((task) => task.status === params.status);
++		if (tasks.length === 0) return new Text(theme.fg("dim", "No tasks"), 0, 0);
++		return new Text(tasks.map((task) => formatCommandTaskLine(task, STATUS_GLYPH[task.status], theme)).join("\n"), 0, 0);
++	}
++
++	if (details.action === "get") {
++		const task = details.tasks.find((candidate) => candidate.id === params.id);
++		return new Text(task ? formatCommandTaskLine(task, STATUS_GLYPH[task.status], theme) : theme.fg("success", "✓"), 0, 0);
++	}
++
++	let task: Task | undefined;
++	if (details.action === "create") task = details.tasks[details.tasks.length - 1];
++	if (details.action === "update" || details.action === "delete") {
++		task = details.tasks.find((candidate) => candidate.id === params.id);
+ 	}
+-	if (status) {
+-		return new Text(theme.fg(STATUS_COLOR[status], `${STATUS_GLYPH[status]} ${formatStatusLabel(status)}`), 0, 0);
++	if (task) {
++		const status = task.status;
++		const attention = formatAttentionIndicator(task, theme);
++		const idAndAttention = attention ? `${theme.fg("dim", `#${task.id}`)} ${attention}` : theme.fg("dim", `#${task.id}`);
++		return new Text(
++			`${theme.fg(STATUS_COLOR[status], `${STATUS_GLYPH[status]} ${formatStatusLabel(status)}`)} ${idAndAttention}`,
++			0,
++			0,
++		);
+ 	}
+ 	return new Text(theme.fg("success", "✓"), 0, 0);
+ }
