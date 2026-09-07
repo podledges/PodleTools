@@ -1,20 +1,21 @@
 diff --git a/README.md b/README.md
-index e1ad737..b70aa35 100644
+index e1ad737..e4beca9 100644
 --- a/README.md
 +++ b/README.md
-@@ -57,6 +57,10 @@ by status.
+@@ -57,6 +57,11 @@ by status.
  - **The overlay never eats your terminal.** Past the row budget it drops
    completed tasks first, truncates unfinished ones last, and tells you what it
    hid with `+3 more (2 completed, 1 pending)`.
 +- **Attention is explicit, not title decoration.** Every outstanding id has a
-+  renderer-owned `●`: neutral for waiting/unknown, neon blue `#0066FF` only for
-+  explicit active work, and the theme accent for captain input. See
++  renderer-owned `●`: yellow `#FFFF00` for waiting/unknown, neon blue
++  `#0066FF` only for explicit active work, and the theme accent for captain
++  input. See
 +  [Overlay and `/todos`](docs/overlay.md) for metadata and transition rules.
  - **The agent can sequence work, not just list it.** `blockedBy` dependencies are
    validated before anything is written — dangling ids, deleted dependencies,
    self-blocks, and cycles are all rejected.
 diff --git a/docs/overlay.md b/docs/overlay.md
-index 81c2b31..946649d 100644
+index 81c2b31..e151545 100644
 --- a/docs/overlay.md
 +++ b/docs/overlay.md
 @@ -26,24 +26,29 @@ and taking the last `todo` tool result's snapshot, which replaces the whole list
@@ -41,8 +42,8 @@ index 81c2b31..946649d 100644
 +- **Status glyphs** — `○` pending, `◐` in_progress, `✓` completed, `✗`
 +  deleted. Completed and deleted subjects render dim and struck through.
 +- **Attention indicator** — the text glyph `●` appears beside every outstanding
-+  task id. Neutral means waiting, blocked, stale, or unknown; neon blue
-+  `#0066FF` means `in_progress` plus `metadata.attention="agent-working"` and no
++  task id. Yellow `#FFFF00` means waiting, blocked, stale, or unknown; neon
++  blue `#0066FF` means `in_progress` plus `metadata.attention="agent-working"` and no
 +  `blockedBy`; hot pink uses the active theme's `accent` (neon-afterglow:
 +  `#ff00cc`) for `metadata.attention="captain-input"`. Completed/deleted rows
 +  have no attention indicator and keep their existing completion presentation.
@@ -76,7 +77,7 @@ index 81c2b31..946649d 100644
    ✓ #1 Create DemoTodo domain entity
    ✓ #2 Create IDemoTodoRepository interface
 diff --git a/docs/tool-schema.md b/docs/tool-schema.md
-index bc82d03..1ffc5d7 100644
+index bc82d03..acce3a0 100644
 --- a/docs/tool-schema.md
 +++ b/docs/tool-schema.md
 @@ -51,6 +51,27 @@ for a key removes it, and emptying the record drops the field entirely.
@@ -93,8 +94,8 @@ index bc82d03..1ffc5d7 100644
 +  `metadata.attention="agent-working"` and no `blockedBy` asserts that the agent
 +  is actually working and renders neon blue `#0066FF`.
 +- `metadata.attention="waiting"`, missing/unknown attention, pending status,
-+  and blocked tasks render neutral. A stale `in_progress` status alone is never
-+  blue.
++  and blocked tasks render yellow `#FFFF00`. A stale `in_progress` status alone
++  is never blue.
 +
 +When a captain answers, clear `captain-input` by setting `attention` to
 +`waiting`; only change it to `agent-working` in the same update that starts
@@ -225,7 +226,7 @@ index cbb59e5..d4e43ce 100644
  	return (
  		value
 diff --git a/view/format.ts b/view/format.ts
-index 605c100..cad2157 100644
+index 605c100..ae964f2 100644
 --- a/view/format.ts
 +++ b/view/format.ts
 @@ -3,7 +3,7 @@ import { Text } from "@earendil-works/pi-tui";
@@ -237,7 +238,7 @@ index 605c100..cad2157 100644
  import type { Task, TaskAction, TaskDetails, TaskMutationParams, TaskStatus } from "../tool/types.js";
  
  // Re-export so legacy import paths (todo.ts, tests) continue to resolve;
-@@ -46,6 +46,54 @@ export const ACTION_GLYPH: Record<TaskAction, string> = {
+@@ -46,6 +46,56 @@ export const ACTION_GLYPH: Record<TaskAction, string> = {
  	clear: "∅",
  };
  
@@ -246,11 +247,13 @@ index 605c100..cad2157 100644
 +/** Neon blue chosen for active work on neon-afterglow's #06040f background. */
 +export const ACTIVE_BLUE_RGB = [0, 102, 255] as const;
 +export const ACTIVE_BLUE_HEX = "#0066FF";
++export const WAITING_YELLOW_RGB = [255, 255, 0] as const;
++export const WAITING_YELLOW_HEX = "#FFFF00";
 +
 +/**
 + * Classify only outstanding tasks. Captain input is explicit and wins. Active
 + * blue requires both in_progress and an explicit agent-working assertion; a
-+ * pending, blocked, stale, or unknown task remains neutral.
++ * pending, blocked, stale, or unknown task remains yellow.
 + */
 +export function classifyAttention(task: Task): AttentionClass | undefined {
 +	if (task.status === "completed" || task.status === "deleted") return undefined;
@@ -277,7 +280,7 @@ index 605c100..cad2157 100644
 +		case "agent-working":
 +			return truecolor(ACTIVE_BLUE_RGB, "●");
 +		case "waiting":
-+			return theme.fg("dim", "●");
++			return truecolor(WAITING_YELLOW_RGB, "●");
 +		case undefined:
 +			return "";
 +	}
@@ -292,7 +295,7 @@ index 605c100..cad2157 100644
  /**
   * Glyph for the persistent overlay's per-task row. Differs from `STATUS_GLYPH`
   * for `completed` (`✓` vs `●`) and `deleted` (`✗` vs `⊘`) because the
-@@ -73,12 +121,12 @@ export function formatOverlayTaskLine(t: Task, theme: Theme, showId: boolean): s
+@@ -73,12 +123,12 @@ export function formatOverlayTaskLine(t: Task, theme: Theme, showId: boolean): s
  	const glyph = overlayStatusGlyph(t.status, theme);
  	const subjectColor =
  		t.status === "in_progress" ? "accent" : t.status === "completed" || t.status === "deleted" ? "muted" : "text";
@@ -307,7 +310,7 @@ index 605c100..cad2157 100644
  	line += ` ${subject}`;
  	if (t.status === "in_progress" && t.activeForm) {
  		line += ` ${theme.fg("muted", `(${sanitizeTerminalText(t.activeForm)})`)}`;
-@@ -89,14 +137,12 @@ export function formatOverlayTaskLine(t: Task, theme: Theme, showId: boolean): s
+@@ -89,14 +139,12 @@ export function formatOverlayTaskLine(t: Task, theme: Theme, showId: boolean): s
  	return line;
  }
  
@@ -326,7 +329,7 @@ index 605c100..cad2157 100644
  }
  
  // ---------------------------------------------------------------------------
-@@ -117,7 +163,7 @@ export function renderTodoCall(
+@@ -117,7 +165,7 @@ export function renderTodoCall(
  	let text = theme.fg("toolTitle", theme.bold("todo ")) + theme.fg("muted", glyph);
  
  	if (args.action === "create" && args.subject) {
@@ -335,7 +338,7 @@ index 605c100..cad2157 100644
  	} else if (
  		(args.action === "update" || args.action === "get" || args.action === "delete") &&
  		args.id !== undefined
-@@ -130,35 +176,38 @@ export function renderTodoCall(
+@@ -130,35 +178,38 @@ export function renderTodoCall(
  	return new Text(text, 0, 0);
  }
  

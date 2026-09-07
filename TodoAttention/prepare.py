@@ -31,7 +31,13 @@ def sha256(path: Path) -> str:
 
 
 def verify(source: Path) -> None:
-    package = json.loads((source / "package.json").read_text())
+    package_path = source / "package.json"
+    if not package_path.is_file():
+        raise SystemExit(f"missing package.json in source: {source}")
+    try:
+        package = json.loads(package_path.read_text())
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"invalid package.json in {source}: {error}") from error
     identity = (package.get("name"), package.get("version"))
     if identity != (EXPECTED_NAME, EXPECTED_VERSION):
         raise SystemExit(
@@ -47,10 +53,12 @@ def verify(source: Path) -> None:
         raise SystemExit("source compatibility check failed:\n" + "\n".join(mismatches))
 
 
-def git_apply(source: Path, check: bool) -> None:
+def git_apply(source: Path, check: bool, reverse: bool = False) -> None:
     command = ["git", "apply"]
     if check:
         command.append("--check")
+    if reverse:
+        command.append("--reverse")
     command.append(str(PATCH.resolve()))
     env = {**os.environ, "GIT_CEILING_DIRECTORIES": str(source.parent)}
     subprocess.run(command, cwd=source, env=env, check=True)

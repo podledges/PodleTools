@@ -38,22 +38,22 @@ from pathlib import Path
 raw = Path(sys.argv[1]).read_bytes()
 blue = b"\x1b[38;2;0;102;255m\xe2\x97\x8f\x1b[39m"
 pink = b"\x1b[38;2;255;0;204m\xe2\x97\x8f\x1b[39m"
-neutral = b"\x1b[38;2;71;58;114m\xe2\x97\x8f\x1b[39m"
-for task_id, color in [(b"#1", neutral), (b"#2", blue), (b"#3", pink), (b"#4", neutral)]:
+yellow = b"\x1b[38;2;255;255;0m\xe2\x97\x8f\x1b[39m"
+for task_id, color in [(b"#1", yellow), (b"#2", blue), (b"#3", pink), (b"#4", yellow)]:
     if task_id + b"\x1b[39m " + color not in raw:
         raise SystemExit(f"missing colored indicator beside {task_id.decode()}")
 text = re.sub(rb"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))", b"", raw)
 for row in [
     b"\xe2\x97\x8f Todos (1/5)",
-    b"#1 \xe2\x97\x8f Neutral waiting",
+    b"#1 \xe2\x97\x8f Yellow waiting",
     b"#2 \xe2\x97\x8f Verified active",
     b"#3 \xe2\x97\x8f Captain decision",
-    b"#4 \xe2\x97\x8f Blocked is neutral",
-    b"#5 Completed is neutral",
+    b"#4 \xe2\x97\x8f Blocked is yellow",
+    b"#5 Completed keeps completion style",
 ]:
     if row not in text:
         raise SystemExit(f"missing TUI row: {row!r}")
-if b"#5 \xe2\x97\x8f Completed is neutral" in text:
+if b"#5 \xe2\x97\x8f Completed keeps completion style" in text:
     raise SystemExit("completed row unexpectedly has an attention indicator")
 print("isolated Pi TUI smoke: ok")
 PY
