@@ -25,3 +25,4 @@ Avoid storing secrets, tokens, private keys, or production credentials in this r
 - [`TodoAttention/`](TodoAttention/) — compatibility-gated coloured attention renderers for the existing rpiv-todo store.
 - [`PiTelegramSetup/`](PiTelegramSetup/) — prepare and inspect a pinned Pi Telegram package without installing or connecting it.
 - [`HerdrTelegramNotifySetup/`](HerdrTelegramNotifySetup/) — prepare and inspect a pinned Herdr outbound Telegram notification plugin without activating it.
+- [`PonytailLitePilot/`](PonytailLitePilot/) — inspect, validate, and optionally run a pinned Ponytail lite package in isolated Pi state.

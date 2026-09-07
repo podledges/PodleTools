@@ -1,0 +1,19 @@
+{
+  "package": "@dietrichgebert/ponytail",
+  "version": "4.9.0",
+  "npm_spec": "npm:@dietrichgebert/ponytail@4.9.0",
+  "npm_integrity": "sha512-OSdybtBZ3uDd5m/+zyz4h8/+BVBR9nGFhqTDmQkQb1v7k4Vfc1qql78naY64UjocdBPqR94htZEkKu2wpKTJaw==",
+  "tarball_sha256": "a3e2d9a479d3c0c0eeeab9be6d4a18f4e975a4c69e9fad9ddc7323f2f91cc6da",
+  "npm_shasum": "2f72e10dec5ad663b28b2f021f829e1d6f413d33",
+  "npm_file_count": 49,
+  "npm_unpacked_size": 1219536,
+  "git_revision": "0a4dd63ad4541f4f655c4108a295916f3c1d8fda",
+  "tested_pi": "0.85.1",
+  "inspected_files": {
+    "package/package.json": "5f7e5ab891c31ae006b986d34e0977fda44fc54e654cc4e07531dd5dd6f96b8f",
+    "package/pi-extension/index.js": "67f12660b2279922adcefd6c112b851830dc1d9b2c9f240b190c849d33e837b3",
+    "package/hooks/ponytail-config.js": "0a8daf96cf9ac703dc4cb7b5065253567e513c951d60b8eb94a0fe727514aeca",
+    "package/hooks/ponytail-instructions.js": "23c050103f28dbe6bad953ae21d98cd06d720a20f33d4716e9de419f947d495e",
+    "package/skills/ponytail/SKILL.md": "1316a2f3f95741d2300b116fe0c2d81ce4a9568656ed0a62643f54aaf09957f2"
+  }
+}
