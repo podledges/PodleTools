@@ -26,3 +26,4 @@ Avoid storing secrets, tokens, private keys, or production credentials in this r
 - [`tools/clipboard-images/`](tools/clipboard-images/) — NixOS/Pi `paste-capture` wrapper for the Windows current-clipboard PNG JSON contract (source-only; no global deploy).
 - [`PiTelegramSetup/`](PiTelegramSetup/) — prepare and inspect a pinned Pi Telegram package without installing or connecting it.
 - [`HerdrTelegramNotifySetup/`](HerdrTelegramNotifySetup/) — prepare and inspect a pinned Herdr outbound Telegram notification plugin without activating it.
+- [`PonytailLitePilot/`](PonytailLitePilot/) — inspect, validate, and optionally run a pinned Ponytail lite package in isolated Pi state.
