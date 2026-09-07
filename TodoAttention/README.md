@@ -18,13 +18,13 @@ beside its always-visible number id:
 | --- | --- |
 | `metadata.attention="captain-input"` | Theme `accent`; `#ff00cc` in neon-afterglow |
 | `status="in_progress"`, `metadata.attention="agent-working"`, no `blockedBy` | Neon blue `#0066FF` |
-| Waiting, pending, blocked, stale, missing, or unknown attention | Existing neutral `dim` theme token |
+| Waiting, pending, blocked, stale, missing, or unknown attention | Yellow `#FFFF00` |
 
 Completed and deleted tasks have no attention indicator and retain upstream's
 neutral/completion styling. There is no lime state and no emoji or heart.
 
 Blue requires an explicit `agent-working` assertion as well as `in_progress`;
-a stale status alone remains neutral. Captain input takes precedence. Before
+a stale status alone remains yellow. Captain input takes precedence. Before
 pausing, blocking, or handing control back, update `attention` to `waiting` and
 move the status to `pending` when appropriate. After a captain answer, first
 clear `captain-input` to `waiting`; set `agent-working` only in the update that
@@ -65,67 +65,94 @@ TodoAttention/tests/test.sh
 TodoAttention/tests/smoke-test.sh
 ```
 
-`test.sh` copies the installed package into a worktree-local scratch directory,
+`test.sh` copies the installed package into worktree-local scratch directories,
 checks and applies the maintained patch, then tests real patched TypeScript
-through Pi's Jiti loader. Assertions cover ANSI/theme bindings, all attention
+through Pi's Jiti loader. Assertions cover exact ANSI bindings, all attention
 classes and transitions, pending/blocked/stale versus explicitly active work,
 completed/deleted rows, update/list/get renderers, narrow ANSI-aware truncation,
 always-visible ids, persistence replay, and legacy title normalization. It also
 proves compatibility drift is rejected and regenerates the patch byte-for-byte.
 
-`smoke-test.sh` starts an actual Pi TUI under a worktree-local
-`PI_CODING_AGENT_DIR`, with extension discovery, sessions, tools, context,
-skills, prompts, network access, and global theme discovery disabled. It loads
-the complete patched upstream extension and neon-afterglow explicitly, captures
-Pi's raw ANSI stream, and verifies the overlay's blue, pink, neutral, blocked,
-and completed rows. It neither reloads a live session nor changes global
-settings/installations.
+The same suite performs check, install, actual Pi discovery, and rollback under
+an isolated `PI_CODING_AGENT_DIR`. It verifies that the installed package is the
+only configured rpiv-todo source, captures the real TUI ANSI stream for yellow,
+blue, and hot pink overlay rows, and proves rollback keeps unrelated settings.
+`smoke-test.sh` separately exercises the complete patched extension explicitly.
+Neither test reloads a live session nor changes global settings/installations.
 
 Environment overrides are available for another installation:
 `RPIV_TODO_SOURCE`, `PI_CORE_PACKAGE`, `NEON_AFTERGLOW_THEME`, and `JITI_PATH`.
 
-## Apply to upstream source
+## Supported preparation and installation
 
-Do not run the patcher against `node_modules`; it deliberately refuses. Start
-from a clean `@juicesharp/rpiv-todo@2.9.0` source tree (for example the package
-directory in an rpiv-mono checkout at the matching release), then run:
-
-```sh
-/path/to/PodleTools/TodoAttention/prepare.py /path/to/rpiv-mono/packages/rpiv-todo
-/path/to/PodleTools/TodoAttention/prepare.py /path/to/rpiv-mono/packages/rpiv-todo --apply
-cd /path/to/rpiv-mono/packages/rpiv-todo
-npm test
-```
-
-The first command checks compatibility and `git apply --check`; the second
-changes that clean upstream checkout. Review its diff before activation.
-
-## Isolated activation before deployment
-
-Use the patched upstream source directly and suppress discovered extensions so
-the globally installed rpiv-todo cannot compete:
+`prepare.py` remains the source-maintainer path. It deliberately refuses to
+mutate `node_modules`; give it a clean `@juicesharp/rpiv-todo@2.9.0` source tree:
 
 ```sh
-scratch=$(mktemp -d)
-printf '{"defaultProjectTrust":"always"}\n' > "$scratch/settings.json"
-PI_CODING_AGENT_DIR="$scratch" PI_OFFLINE=1 \
-  pi --no-session --no-extensions \
-  -e /path/to/rpiv-mono/packages/rpiv-todo/index.ts \
-  --no-themes --theme /path/to/neon-afterglow.json \
-  --use-theme neon-afterglow --offline
+TodoAttention/prepare.py /path/to/rpiv-mono/packages/rpiv-todo
+TodoAttention/prepare.py /path/to/rpiv-mono/packages/rpiv-todo --apply
 ```
 
-Install the patched upstream checkout permanently only after review/merge and
-explicit deployment approval:
+For an installed npm package, use `install.py`. It reads but never edits the npm
+package. It checks the package identity, every patched-file hash, required
+installed dependencies, patch applicability, and that settings contain exactly
+one rpiv-todo source. It then builds a self-contained patched package under
+`$PI_CODING_AGENT_DIR/todoattention/releases/`, backs up `settings.json`, and
+atomically replaces the npm package entry with that stable absolute local path.
+The local package survives deletion of a checkout or disposable task worktree.
+
+Run the complete preflight without persistent changes:
 
 ```sh
-pi remove npm:@juicesharp/rpiv-todo
-pi install /absolute/path/to/rpiv-mono/packages/rpiv-todo
-# Restart Pi; do not reload an in-flight shared session.
+TodoAttention/install.py check \
+  --source /home/podles/.pi/agent/npm/node_modules/@juicesharp/rpiv-todo
+TodoAttention/install.py install \
+  --source /home/podles/.pi/agent/npm/node_modules/@juicesharp/rpiv-todo \
+  --dry-run
 ```
 
-Removing the npm entry before adding the local patched upstream source avoids
-duplicate lifecycle handlers and duplicate `todo` registrations. This PR makes
-the patch **code-ready only**: it does not apply it to the global installation,
-edit global settings, reload a session, merge a PR, or authorize live
-deployment.
+After this change is merged and activation is separately approved, the ready
+install command from a stable PodleTools checkout is:
+
+```sh
+/path/to/PodleTools/TodoAttention/install.py install \
+  --source /home/podles/.pi/agent/npm/node_modules/@juicesharp/rpiv-todo
+```
+
+The command does **not** restart or reload Pi. Exit or restart Pi only in a
+separately coordinated window; merged code, configured package source, and
+colors visible in a newly started TUI are three distinct states. Do not run
+`pi remove` followed by `pi install`: a failure between those commands leaves a
+partial configuration, while the supported installer stages and verifies the
+replacement first and never registers two todo packages.
+
+### Rollback
+
+Preflight and perform rollback with:
+
+```sh
+TodoAttention/install.py rollback --dry-run
+TodoAttention/install.py rollback
+```
+
+Rollback requires exactly one managed TodoAttention entry and no competing npm
+entry. It restores the original package entry in place, preserves unrelated
+settings (including changes made after installation), removes the managed
+release, and does not restart Pi. The exact pre-install `settings.json` is also
+kept under `$PI_CODING_AGENT_DIR/todoattention/backups/` for inspection or
+manual disaster recovery.
+
+### Versions and updates
+
+The release is intentionally pinned to `@juicesharp/rpiv-todo@2.9.0` and the
+hashes in `prepare.py`. `pi update --extensions` does not update an absolute
+local package source. To adopt a newer upstream version, first update and test
+the maintained patch, compatibility hashes, release name, and installer checks;
+then roll back the old managed release, update the npm package, and run the new
+installer. The installer copies the compatible installed `rpiv-config` and
+`typebox` runtime dependencies into the managed release, so it does not depend
+on the disposable npm tree after activation. Upstream package metadata, author,
+repository, and MIT license remain intact.
+
+This repository change does not install into the production agent directory,
+restart a live session, or claim that merged code is already visible.

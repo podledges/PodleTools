@@ -8,7 +8,7 @@ export default function (pi: ExtensionAPI): void {
 		commitState(sessionId, {
 			nextId: 6,
 			tasks: [
-				{ id: 1, subject: "Neutral waiting", status: "pending", metadata: { attention: "waiting" } },
+				{ id: 1, subject: "Yellow waiting", status: "pending", metadata: { attention: "waiting" } },
 				{
 					id: 2,
 					subject: "Verified active",
@@ -19,12 +19,12 @@ export default function (pi: ExtensionAPI): void {
 				{ id: 3, subject: "Captain decision", status: "pending", metadata: { attention: "captain-input" } },
 				{
 					id: 4,
-					subject: "Blocked is neutral",
+					subject: "Blocked is yellow",
 					status: "in_progress",
 					blockedBy: [1],
 					metadata: { attention: "agent-working" },
 				},
-				{ id: 5, subject: "Completed is neutral", status: "completed" },
+				{ id: 5, subject: "Completed keeps completion style", status: "completed" },
 			],
 		});
 		setActiveRenderSession(sessionId);

@@ -44,4 +44,6 @@ if text != expected.read_text():
     raise SystemExit("maintained patch differs from freshly generated patch")
 PY
 
+"$root/tests/install-test.sh"
+
 echo "TodoAttention tests: ok"
