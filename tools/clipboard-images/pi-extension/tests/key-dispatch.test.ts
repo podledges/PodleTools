@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { sha256Hex } from "../staging.ts";
@@ -15,7 +16,11 @@ import {
   WSL_BINDINGS,
   type RegisteredShortcut,
 } from "./pi-key-dispatch-harness.ts";
-import createExtension, { stageClipboardScreenshot } from "../index.ts";
+import createExtension, {
+  SHORTCUTS,
+  resetPasteLinkerCaptureState,
+  stageClipboardScreenshot,
+} from "../index.ts";
 
 const MIN_PNG = Buffer.from(
   "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a4944415478da6300000002000100cfc8cd690000000049454e44ae426082",
@@ -24,6 +29,9 @@ const MIN_PNG = Buffer.from(
 
 const ALT_V = "\x1bv";
 const CTRL_V = "\x16";
+const CTRL_ALT_V = "\x1b\x16";
+const KITTY_ALT_V = "\x1b[118;3u";
+const KITTY_CTRL_ALT_V = "\x1b[118;7u";
 
 type MockUi = {
   editorText: string;
@@ -101,6 +109,7 @@ test("installed Pi still lets extension shortcuts consume Alt+V before pasteImag
 });
 
 test("isolated Pi key dispatch: one capture, zero native pasteImage", async () => {
+  resetPasteLinkerCaptureState();
   const root = mkdtempSync(join(tmpdir(), "paste-key-"));
   const staged = join(root, "paste-unique.png");
   writeFileSync(staged, MIN_PNG);
@@ -125,8 +134,10 @@ test("isolated Pi key dispatch: one capture, zero native pasteImage", async () =
   const pi = createMockPi();
   createExtension(pi);
 
+  assert.deepEqual([...pi.shortcuts.keys()], [...SHORTCUTS]);
   const registered = pi.shortcuts.get("alt+v");
   assert.ok(registered, "extension must register alt+v");
+  assert.ok(pi.shortcuts.get("ctrl+alt+v"), "extension must register ctrl+alt+v");
 
   const extensionShortcuts = getShortcuts(
     [
@@ -280,7 +291,62 @@ test("non-vision submit stays link-only", async () => {
   }
 });
 
+test("ctrl+alt+v and kitty CSI-u alt+v consume like alt+v", () => {
+  assert.equal(matchesKey(CTRL_ALT_V, "ctrl+alt+v"), true);
+  assert.equal(matchesKey(KITTY_ALT_V, "alt+v"), true);
+  assert.equal(matchesKey(KITTY_CTRL_ALT_V, "ctrl+alt+v"), true);
+  const extensionShortcuts = getShortcuts(
+    [
+      {
+        shortcuts: new Map<string, RegisteredShortcut>([
+          [
+            "alt+v",
+            {
+              shortcut: "alt+v",
+              extensionPath: "paste-linker",
+              handler: () => {},
+            },
+          ],
+          [
+            "ctrl+alt+v",
+            {
+              shortcut: "ctrl+alt+v",
+              extensionPath: "paste-linker",
+              handler: () => {},
+            },
+          ],
+        ]),
+      },
+    ],
+    WSL_BINDINGS,
+  );
+  for (const data of [ALT_V, CTRL_ALT_V, KITTY_ALT_V, KITTY_CTRL_ALT_V]) {
+    const dispatched = dispatchEditorKey(data, {
+      shortcuts: extensionShortcuts,
+      keybindings: WSL_BINDINGS,
+      onPasteImage: () => {
+        throw new Error("native pasteImage must not run");
+      },
+    });
+    assert.equal(dispatched.consumedByExtension, true, data);
+    assert.equal(dispatched.nativePasteImageCalls, 0, data);
+  }
+});
+
+test("installed Pi loader loads this extension with both shortcuts", async () => {
+  const { loadExtensions } = await import(
+    "/home/podles/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js"
+  );
+  const indexPath = join(dirname(fileURLToPath(import.meta.url)), "..", "index.ts");
+  const result = await loadExtensions([indexPath], process.cwd());
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.extensions.length, 1);
+  const keys = [...result.extensions[0].shortcuts.keys()].sort();
+  assert.deepEqual(keys, ["alt+v", "ctrl+alt+v"]);
+});
+
 test("capture failure notifies and does not insert a marker", async () => {
+  resetPasteLinkerCaptureState();
   const ui = createMockUi();
   const ctx = createMockCtx(ui);
   const { stageClipboardScreenshot } = await import("../index.ts");

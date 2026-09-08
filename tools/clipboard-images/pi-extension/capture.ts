@@ -10,9 +10,15 @@ import {
 
 export const DEFAULT_CAPTURE_BIN =
   "/home/podles/.local/share/paste-linker/bin/paste-capture";
+/** Live Windows capture script installed by activation, not the missing WindOS tree. */
 export const DEFAULT_WINDOWS_SCRIPT =
-  "/mnt/c/Users/ayden/AppData/Local/PodleWindOS/tools/clipboard-images/Capture-CurrentClipboardImage.ps1";
+  "/mnt/c/Users/ayden/AppData/Local/PodlePaste/deploy/Capture-CurrentClipboardImage.ps1";
 export const CAPTURE_TIMEOUT_MS = 30_000;
+export const CLIPBOARD_RETRY_ATTEMPTS = 8;
+export const CLIPBOARD_RETRY_DELAY_MS = 50;
+
+const RETRYABLE_CAPTURE =
+  /clipboard is not an image|clipboard changed during capture|advertised an image but returned no image data|still has the previous screenshot/i;
 
 export type ExecResult = {
   stdout: string;
@@ -32,6 +38,10 @@ export type CaptureOptions = {
   stagingDir?: string;
   timeoutMs?: number;
   runner?: ExecRunner;
+  rejectSha256?: string;
+  retryAttempts?: number;
+  retryDelayMs?: number;
+  sleep?: (ms: number) => Promise<void>;
 };
 
 export type CaptureSuccess = {
@@ -128,8 +138,18 @@ export function defaultExec(
   });
 }
 
-export async function captureCurrentClipboard(
-  options: CaptureOptions = {},
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+export function isRetryableCaptureFailure(message: string): boolean {
+  return RETRYABLE_CAPTURE.test(message);
+}
+
+async function captureOnce(
+  options: CaptureOptions,
 ): Promise<CaptureSuccess> {
   const resolved = resolveCaptureConfig(options);
   const runner = options.runner ?? defaultExec;
@@ -141,6 +161,12 @@ export async function captureCurrentClipboard(
     throw new Error(`capture failed: ${detail}`);
   }
   const capture = parseToolsCaptureStdout(result.stdout);
+  const rejectSha = options.rejectSha256?.toLowerCase();
+  if (rejectSha && capture.sha256 === rejectSha) {
+    throw new Error(
+      "clipboard still has the previous screenshot; finish the new snip first",
+    );
+  }
   const read = readStagedImage(capture.path, capture.sha256, resolved.stagingDir);
   if (!read.ok) {
     throw new Error(read.error.message);
@@ -149,4 +175,28 @@ export async function captureCurrentClipboard(
     throw new Error("staged capture is not a PNG");
   }
   return { capture, image: read.image };
+}
+
+export async function captureCurrentClipboard(
+  options: CaptureOptions = {},
+): Promise<CaptureSuccess> {
+  const attempts = options.retryAttempts ?? CLIPBOARD_RETRY_ATTEMPTS;
+  const delayMs = options.retryDelayMs ?? CLIPBOARD_RETRY_DELAY_MS;
+  const sleep = options.sleep ?? defaultSleep;
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await captureOnce(options);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (
+        attempt >= attempts - 1 ||
+        !isRetryableCaptureFailure(lastError.message)
+      ) {
+        throw lastError;
+      }
+      await sleep(delayMs * (attempt + 1));
+    }
+  }
+  throw lastError ?? new Error("capture failed");
 }

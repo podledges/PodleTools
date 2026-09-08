@@ -14,6 +14,8 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP="${BACKUP_ROOT}/${STAMP}"
 WRAPPER="/home/podles/.local/share/paste-linker/bin/paste-capture"
 WRAPPER_SHA_EXPECTED="d591a4cf3654635baf92487cbea729c19aaae241be23d9506028028b6fa93935"
+LIVE_CAPTURE_PY="/home/podles/.local/share/paste-linker/tools/paste_capture.py"
+SRC_CAPTURE_PY="${ROOT}/paste_capture.py"
 
 if [[ ! -f "${SRC}/index.ts" || ! -f "${SRC}/capture.ts" ]]; then
   echo "install-pi-extension: missing source at ${SRC}" >&2
@@ -66,6 +68,10 @@ if [[ -f "${WRAPPER}" ]]; then
     cp -a /home/podles/.local/share/paste-linker/bin/windows-powershell "${BACKUP}/originals/paste-linker-bin/"
   fi
 fi
+if [[ -f "${LIVE_CAPTURE_PY}" ]]; then
+  mkdir -p "${BACKUP}/originals/paste-linker-tools"
+  cp -a "${LIVE_CAPTURE_PY}" "${BACKUP}/originals/paste-linker-tools/paste_capture.py"
+fi
 cp -a /home/podles/.pi/agent/settings.json "${BACKUP}/originals/settings.json" 2>/dev/null || true
 cp -a /home/podles/.pi/agent/keybindings.json "${BACKUP}/originals/keybindings.json" 2>/dev/null || true
 ls -la /home/podles/.pi/agent/extensions > "${BACKUP}/originals/extensions-listing.txt"
@@ -75,6 +81,11 @@ rsync -a --delete \
   --exclude tests \
   --exclude '*.test.ts' \
   "${SRC}/" "${LIVE_EXT}/"
+
+# Update Tools paste_capture.py only. Never replace the /init wrapper.
+if [[ -f "${SRC_CAPTURE_PY}" && -f "${LIVE_CAPTURE_PY}" ]]; then
+  cp -a "${SRC_CAPTURE_PY}" "${LIVE_CAPTURE_PY}"
+fi
 
 # Atomically replace only the paste-linker symlink.
 tmp_link="$(mktemp -p "$(dirname "${SYMLINK}")" .paste-linker.XXXXXX)"
@@ -91,14 +102,19 @@ mv -Tf "${tmp_link}" "${SYMLINK}"
   echo "wrapper_sha256=$(sha256sum "${WRAPPER}" 2>/dev/null | awk '{print $1}')"
   echo "index_sha256=$(sha256sum "${LIVE_EXT}/index.ts" | awk '{print $1}')"
   echo "capture_ts_sha256=$(sha256sum "${LIVE_EXT}/capture.ts" | awk '{print $1}')"
+  echo "paste_capture_py_sha256=$(sha256sum "${LIVE_CAPTURE_PY}" 2>/dev/null | awk '{print $1}')"
   echo "reload=not performed; ready for coordinated user /reload"
 } | tee "${BACKUP}/manifest.txt"
 
 cat > "${BACKUP}/rollback.sh" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-# Restore only the paste-linker symlink. Does not /reload Pi.
+# Restore the paste-linker symlink and paste_capture.py. Does not /reload Pi.
+# Does not replace the /init wrapper.
 ln -sfn $(printf '%q' "${current_target}") $(printf '%q' "${SYMLINK}")
+if [[ -f $(printf '%q' "${BACKUP}/originals/paste-linker-tools/paste_capture.py") ]]; then
+  cp -a $(printf '%q' "${BACKUP}/originals/paste-linker-tools/paste_capture.py") $(printf '%q' "${LIVE_CAPTURE_PY}")
+fi
 echo "restored ${SYMLINK} -> ${current_target}"
 EOF
 chmod +x "${BACKUP}/rollback.sh"
