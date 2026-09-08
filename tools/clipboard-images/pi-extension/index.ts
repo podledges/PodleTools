@@ -10,6 +10,7 @@ import {
 import { modelAcceptsImages, transformPastedScreenshots } from "./transform.ts";
 
 export const SHORTCUT = "alt+v";
+export const SHORTCUTS = ["alt+v", "ctrl+alt+v"] as const;
 export const WIDGET_ID = "paste-linker";
 export const STATUS_ID = "paste-linker";
 
@@ -17,6 +18,12 @@ type SubmitKind = "included" | "link-only";
 
 let unsubscribeInput: (() => void) | undefined;
 let lastSubmit: SubmitKind | null = null;
+let lastStagedSha256: string | null = null;
+
+export function resetPasteLinkerCaptureState(): void {
+  lastSubmit = null;
+  lastStagedSha256 = null;
+}
 
 function setWidget(ctx: ExtensionContext, lines: string[] | undefined): void {
   if (!ctx.hasUI) return;
@@ -78,7 +85,11 @@ export async function stageClipboardScreenshot(
   options?: Parameters<typeof captureCurrentClipboard>[0],
 ): Promise<void> {
   try {
-    const { capture } = await captureCurrentClipboard(options);
+    const { capture } = await captureCurrentClipboard({
+      ...options,
+      rejectSha256: options?.rejectSha256 ?? lastStagedSha256 ?? undefined,
+    });
+    lastStagedSha256 = capture.sha256;
     const marker = formatMarker(
       capture.kind,
       capture.sha256,
@@ -96,15 +107,18 @@ export async function stageClipboardScreenshot(
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.registerShortcut(SHORTCUT, {
-    description: "Stage current clipboard screenshot (not sent until submit)",
-    handler: async (ctx) => {
-      await stageClipboardScreenshot(ctx);
-    },
-  });
+  const handler = async (ctx: ExtensionContext) => {
+    await stageClipboardScreenshot(ctx);
+  };
+  for (const shortcut of SHORTCUTS) {
+    pi.registerShortcut(shortcut, {
+      description: "Stage current clipboard screenshot (not sent until submit)",
+      handler,
+    });
+  }
 
   pi.on("session_start", (_event, ctx) => {
-    lastSubmit = null;
+    resetPasteLinkerCaptureState();
     unsubscribeInput?.();
     if (ctx.hasUI && typeof ctx.ui.onTerminalInput === "function") {
       unsubscribeInput = ctx.ui.onTerminalInput(() => {
@@ -118,7 +132,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", () => {
     unsubscribeInput?.();
     unsubscribeInput = undefined;
-    lastSubmit = null;
+    resetPasteLinkerCaptureState();
   });
 
   pi.on("model_select", (_event, ctx) => {

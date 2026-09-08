@@ -66,7 +66,7 @@ Running this source helper does not install a package, deploy to PATH, or change
 
 ```bash
 tools/clipboard-images/bin/paste-capture \
-  --script '/mnt/c/Users/ayden/AppData/Local/PodleWindOS/tools/clipboard-images/Capture-CurrentClipboardImage.ps1' \
+  --script '/mnt/c/Users/ayden/AppData/Local/PodlePaste/deploy/Capture-CurrentClipboardImage.ps1' \
   --staging-dir '/mnt/c/Users/ayden/AppData/Local/PodlePaste/staging'
 ```
 
@@ -74,7 +74,7 @@ tools/clipboard-images/bin/paste-capture \
 - `--staging-dir` (optional): absolute WSL or Windows directory mapped to PowerShell `-DestinationDirectory`. Default is `LOCALAPPDATA/PodlePaste/staging`.
 - `--powershell` (optional): absolute `powershell.exe`. Default is PATH / the WSL Windows PowerShell path.
 
-The wrapper always execs `powershell.exe -NoProfile -STA -File <script> [-DestinationDirectory <staging>]` as an argv list (`shell=False`). Failures print a short message on stderr and exit nonzero, with **no** success JSON and **no** clipboard bytes.
+The wrapper always execs `powershell.exe -NoProfile -NoLogo -STA -File <script> [-DestinationDirectory <staging>]` as an argv list (`shell=False`). Failures print a short message on stderr and exit nonzero, with **no** success JSON and **no** clipboard bytes. PowerShell metadata JSON may use CRLF; the parser still requires exactly one JSON object and one newline (LF or CRLF). Copyright banners and extra lines are rejected. The Pi extension default `--script` is the live `PodlePaste/deploy` copy, not the missing `PodleWindOS` tree.
 
 Live hosts should keep the `/init`-safe wrapper in `/home/podles/.local/share/paste-linker/bin/paste-capture`. Do not replace that wrapper with this source `bin/paste-capture` helper.
 
@@ -95,9 +95,9 @@ Capture publishes immutable uniquely named PNGs. This wrapper does not delete, o
 
 ## Pi extension (`pi-extension/`)
 
-Pi 0.85.1 binds `app.clipboard.pasteImage` to Alt+V on Windows/WSL. That binding is **not** in Pi's reserved-conflict list, so `pi.registerShortcut("alt+v")` is consumed first and native `pasteImage` does not also run.
+Pi 0.85.1 binds `app.clipboard.pasteImage` to Alt+V on Windows/WSL. That binding is **not** in Pi's reserved-conflict list, so `pi.registerShortcut("alt+v")` is consumed first and native `pasteImage` does not also run. `ctrl+alt+v` is registered as the same handler.
 
-On explicit Alt+V:
+On explicit Alt+V (or Ctrl+Alt+V):
 
 1. Invoke `/home/podles/.local/share/paste-linker/bin/paste-capture --script <Capture-CurrentClipboardImage.ps1> --staging-dir <staging>`.
 2. Re-validate the returned staged PNG (path inside staging root, hash, PNG magic, size).

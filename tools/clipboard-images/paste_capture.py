@@ -171,7 +171,9 @@ def build_command(
     script: str,
     destination_directory: str | None,
 ) -> list[str]:
-    command = [powershell, "-NoProfile", "-STA", "-File", script]
+    # -NoLogo keeps the copyright banner off stdout. Windows PowerShell 5.1
+    # still exits 0 for a missing -File path; callers must not treat that as JSON.
+    command = [powershell, "-NoProfile", "-NoLogo", "-STA", "-File", script]
     if destination_directory is not None:
         command.extend(["-DestinationDirectory", destination_directory])
     return command
@@ -186,9 +188,16 @@ def decode_stdout(data: bytes) -> str:
 
 
 def parse_success_json(stdout: str) -> dict[str, Any]:
-    if not stdout.endswith("\n") or stdout.count("\n") != 1:
+    # One metadata JSON object and one newline. Allow CRLF from Windows
+    # PowerShell Write-Output; reject banners, extra blank lines, and junk.
+    if stdout.endswith("\r\n"):
+        body = stdout[:-2]
+    elif stdout.endswith("\n"):
+        body = stdout[:-1]
+    else:
         raise PasteCaptureError("capture stdout must be one JSON object followed by a newline")
-    body = stdout[:-1]
+    if "\n" in body or "\r" in body:
+        raise PasteCaptureError("capture stdout must be one JSON object followed by a newline")
     if not body or body[:1] in " \t":
         raise PasteCaptureError("capture stdout must be one JSON object followed by a newline")
     try:
@@ -316,12 +325,13 @@ def capture_current_image(
     except OSError as error:
         raise PasteCaptureError(f"failed to run capture script: {error}") from error
 
+    try:
+        stderr_text = decode_stdout(completed.stderr or b"").strip()
+    except UnicodeDecodeError:
+        stderr_text = ""
+
     if completed.returncode != 0:
-        try:
-            detail = decode_stdout(completed.stderr or b"").strip() or "capture failed"
-        except UnicodeDecodeError:
-            detail = "capture failed"
-        raise PasteCaptureError(detail)
+        raise PasteCaptureError(stderr_text or "capture failed")
 
     stdout_bytes = completed.stdout or b""
     if len(stdout_bytes) > MAX_STDOUT_BYTES:
@@ -331,7 +341,14 @@ def capture_current_image(
     except UnicodeDecodeError as error:
         raise PasteCaptureError("capture stdout is not valid UTF-8 or UTF-16") from error
 
-    payload = parse_success_json(stdout)
+    try:
+        payload = parse_success_json(stdout)
+    except PasteCaptureError:
+        # Missing -File on Windows PowerShell 5.1 exits 0 and may print a
+        # copyright banner on stdout. Surface stderr instead of a JSON-framing error.
+        if stderr_text:
+            raise PasteCaptureError(stderr_text) from None
+        raise
     windows_path, digest = validate_payload_fields(payload)
     resolved = validate_artifact(windows_path, digest, allowed_root, mount)
     return {

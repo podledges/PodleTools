@@ -18,8 +18,10 @@ sys.path.insert(0, str(ROOT))
 
 from paste_capture import (  # noqa: E402
     DEFAULT_STAGING_WINDOWS,
+    PasteCaptureError,
     build_command,
     main,
+    parse_success_json,
 )
 
 # 1x1 transparent PNG.
@@ -147,7 +149,7 @@ class PasteCaptureTests(unittest.TestCase):
         self.assertNotIn(str(current.resolve()), result.stdout)
         self.assertNotIn(str(decoy.resolve()), result.stdout)
         command = runner.commands[0]
-        self.assertEqual(command[1:4], ["-NoProfile", "-STA", "-File"])
+        self.assertEqual(command[1:5], ["-NoProfile", "-NoLogo", "-STA", "-File"])
         self.assertNotIn("latest", command)
         self.assertNotIn("list", command)
         self.assertFalse(runner.kwargs[0].get("shell"))
@@ -395,6 +397,7 @@ class PasteCaptureTests(unittest.TestCase):
             [
                 r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
                 "-NoProfile",
+                "-NoLogo",
                 "-STA",
                 "-File",
                 r"C:\tools\Capture-CurrentClipboardImage.ps1",
@@ -402,6 +405,37 @@ class PasteCaptureTests(unittest.TestCase):
                 r"C:\Users\ayden\AppData\Local\PodlePaste\staging",
             ],
         )
+
+    def test_crlf_single_json_line_is_accepted(self) -> None:
+        name = "crlf.png"
+        artifact = self.write_png(name)
+        payload = {
+            "schema": 1,
+            "kind": "image",
+            "label": "Screenshot Pasted",
+            "path": self.windows_staging_file(name),
+            "sha256": sha256(MIN_PNG),
+        }
+        stdout = (json.dumps(payload, ensure_ascii=False) + "\r\n").encode("utf-8")
+        result = self.run_main(FakeRunner(stdout=stdout))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["path"], str(artifact.resolve()))
+        parsed = parse_success_json(stdout.decode("utf-8"))
+        self.assertEqual(parsed["sha256"], sha256(MIN_PNG))
+
+    def test_powershell_banner_is_not_json_and_surfaces_stderr(self) -> None:
+        banner = b"Windows PowerShell\r\nCopyright (C) Microsoft Corporation. All rights reserved.\r\n\r\n"
+        stderr = (
+            b"The argument 'C:\\missing\\Capture-CurrentClipboardImage.ps1' "
+            b"to the -File parameter does not exist.\r\n"
+        )
+        result = self.run_main(FakeRunner(stdout=banner, stderr=stderr, returncode=0))
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("does not exist", result.stderr)
+        self.assertNotIn("one JSON object followed by a newline", result.stderr)
+        with self.assertRaises(PasteCaptureError):
+            parse_success_json(banner.decode("utf-8"))
 
     def test_source_does_not_fallback_to_latest_list_or_screenshots2(self) -> None:
         source = (ROOT / "paste_capture.py").read_text()
