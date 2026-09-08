@@ -1,36 +1,27 @@
+// Test-only observation inside an isolated Pi process. The configured/index.ts
+// extension owns the widget; synthetic session data is supplied by seed-session.py.
+import { writeFileSync } from "node:fs";
+import { performance } from "node:perf_hooks";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { commitState, setActiveRenderSession, sid } from "../state/store.js";
-import { TodoOverlay } from "../todo-overlay.js";
 
 export default function (pi: ExtensionAPI): void {
-	pi.on("session_start", async (_event, ctx) => {
-		const sessionId = sid(ctx);
-		commitState(sessionId, {
-			nextId: 6,
-			tasks: [
-				{ id: 1, subject: "Yellow waiting", status: "pending", metadata: { attention: "waiting" } },
-				{
-					id: 2,
-					subject: "Verified active",
-					status: "in_progress",
-					activeForm: "running isolated smoke",
-					metadata: { attention: "agent-working" },
-				},
-				{ id: 3, subject: "Captain decision", status: "pending", metadata: { attention: "captain-input" } },
-				{
-					id: 4,
-					subject: "Blocked is yellow",
-					status: "in_progress",
-					blockedBy: [1],
-					metadata: { attention: "agent-working" },
-				},
-				{ id: 5, subject: "Completed keeps completion style", status: "completed" },
-			],
-		});
-		setActiveRenderSession(sessionId);
-		const overlay = new TodoOverlay();
-		overlay.setUICtx(ctx.ui);
-		overlay.update();
-		setTimeout(() => ctx.shutdown(), 750);
+	const original = globalThis.setInterval;
+	const ticks: number[] = [];
+	let animationTimers = 0;
+	let shutdown: ReturnType<typeof setTimeout> | undefined;
+	// Observe, don't accelerate or replace the real clock. No host is running
+	// outside this disposable process and the original is restored on shutdown.
+	globalThis.setInterval = ((callback: () => void, ms: number, ...args: unknown[]) => {
+		if (ms !== 150) return original(callback, ms, ...args);
+		animationTimers++;
+		return original(() => { ticks.push(performance.now()); callback(); }, ms);
+	}) as typeof setInterval;
+	pi.on("session_start", (_event, ctx) => {
+		shutdown = setTimeout(() => ctx.shutdown(), 2100);
+	});
+	pi.on("session_shutdown", () => {
+		globalThis.setInterval = original;
+		if (shutdown !== undefined) clearTimeout(shutdown);
+		writeFileSync(process.env.TODOATTENTION_CADENCE_FILE!, JSON.stringify({ animationTimers, ticks }));
 	});
 }

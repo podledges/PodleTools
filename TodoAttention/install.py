@@ -16,7 +16,9 @@ from typing import Any
 import prepare
 
 UPSTREAM_SOURCE = "npm:@juicesharp/rpiv-todo"
-RELEASE_NAME = "rpiv-todo-2.9.0-attention-v1"
+RELEASE_NAME = "rpiv-todo-2.9.0-attention-v2"
+LEGACY_RELEASE_NAME = "rpiv-todo-2.9.0-attention-v1"
+LEGACY_PATCH = prepare.PATCH.with_name("rpiv-todo-2.9.0-attention-v1.patch")
 MANAGED_DIR = "todoattention"
 MANIFEST_NAME = "install-manifest.json"
 DEPENDENCIES = {
@@ -111,7 +113,11 @@ def compatibility(source: Path, settings_path: Path, managed_source: str) -> tup
     packages = settings.get("packages")
     if not isinstance(packages, list):
         fail("settings packages must be an array")
-    candidates = [entry for entry in packages if is_upstream(entry) or package_source(entry) == managed_source]
+    legacy_source = str(Path(managed_source).with_name(LEGACY_RELEASE_NAME))
+    candidates = [
+        entry for entry in packages
+        if is_upstream(entry) or package_source(entry) in {managed_source, legacy_source}
+    ]
     if len(candidates) != 1:
         fail(
             "expected exactly one rpiv-todo package entry (upstream or TodoAttention managed); "
@@ -150,7 +156,19 @@ def install(source: Path, agent_dir: Path, dry_run: bool) -> None:
         prepare.git_apply(release, check=True, reverse=True)
         print(f"installed and compatible: {managed_source}")
         return
-    if not is_upstream(current_entry):
+    previous_manifest = None
+    legacy_release = release.with_name(LEGACY_RELEASE_NAME)
+    if package_source(current_entry) == str(legacy_release.resolve()):
+        previous_manifest = read_json(managed_root / MANIFEST_NAME)
+        if (
+            not isinstance(previous_manifest, dict)
+            or previous_manifest.get("format") != 1
+            or previous_manifest.get("installedSource") != str(legacy_release.resolve())
+            or not is_upstream(previous_manifest.get("originalPackageEntry"))
+        ):
+            fail("invalid legacy TodoAttention manifest; settings were not changed")
+        prepare.git_apply(legacy_release, check=True, reverse=True, patch=LEGACY_PATCH)
+    elif not is_upstream(current_entry):
         fail(f"unsupported rpiv-todo package entry: {current_entry!r}")
     if release.exists():
         fail(f"managed release already exists without matching settings entry: {release}")
@@ -186,6 +204,9 @@ def install(source: Path, agent_dir: Path, dry_run: bool) -> None:
             "settingsBeforeSha256": file_sha256(backup),
         }
 
+        if previous_manifest is not None:
+            # Keep the verified v1 release intact for atomic, one-step rollback.
+            manifest["previousManifest"] = previous_manifest
         release.parent.mkdir(exist_ok=True)
         os.replace(stage, release)
         try:
@@ -194,6 +215,8 @@ def install(source: Path, agent_dir: Path, dry_run: bool) -> None:
             atomic_json(managed_root / MANIFEST_NAME, manifest)
         except BaseException:
             atomic_json(settings_path, settings)
+            if previous_manifest is not None:
+                atomic_json(managed_root / MANIFEST_NAME, previous_manifest)
             shutil.rmtree(release, ignore_errors=True)
             raise
         print(f"installed: {managed_source}")
@@ -213,7 +236,8 @@ def rollback(agent_dir: Path, dry_run: bool) -> None:
     if not isinstance(managed_source, str) or original is None:
         fail("install manifest is incomplete")
     expected_source = str((managed_root / "releases" / RELEASE_NAME).resolve())
-    if managed_source != expected_source:
+    legacy_source = str((managed_root / "releases" / LEGACY_RELEASE_NAME).resolve())
+    if managed_source not in {expected_source, legacy_source}:
         fail(f"install manifest references an unexpected release: {managed_source}")
     settings_path = agent_dir / "settings.json"
     settings = read_json(settings_path)
@@ -224,7 +248,12 @@ def rollback(agent_dir: Path, dry_run: bool) -> None:
         fail("settings packages must be an array")
     managed_entries = [entry for entry in packages if package_source(entry) == managed_source]
     upstream_entries = [entry for entry in packages if is_upstream(entry)]
-    if len(managed_entries) != 1 or upstream_entries:
+    competing_managed = [
+        entry for entry in packages
+        if package_source(entry) in {expected_source, legacy_source}
+        and package_source(entry) != managed_source
+    ]
+    if len(managed_entries) != 1 or upstream_entries or competing_managed:
         fail(
             "rollback requires exactly one managed TodoAttention entry and no upstream rpiv-todo entry; "
             "settings were not changed"
@@ -233,7 +262,22 @@ def rollback(agent_dir: Path, dry_run: bool) -> None:
     release = Path(managed_source)
     if not release.is_dir():
         fail(f"managed release is missing: {release}")
-    prepare.git_apply(release, check=True, reverse=True)
+    patch = LEGACY_PATCH if managed_source == legacy_source else prepare.PATCH
+    prepare.git_apply(release, check=True, reverse=True, patch=patch)
+    previous_manifest = manifest.get("previousManifest")
+    if previous_manifest is not None:
+        if (
+            managed_source != expected_source
+            or not isinstance(previous_manifest, dict)
+            or previous_manifest.get("format") != 1
+            or previous_manifest.get("installedSource") != legacy_source
+            or package_source(original) != legacy_source
+            or not is_upstream(previous_manifest.get("originalPackageEntry"))
+        ):
+            fail("invalid previous TodoAttention manifest; settings were not changed")
+        prepare.git_apply(Path(legacy_source), check=True, reverse=True, patch=LEGACY_PATCH)
+    elif not is_upstream(original):
+        fail("rollback requires a verified original upstream package entry")
     if dry_run:
         print(f"compatible dry-run: would restore {package_source(original)} and remove {release}")
         return
@@ -242,11 +286,16 @@ def rollback(agent_dir: Path, dry_run: bool) -> None:
     os.replace(release, retired)
     try:
         atomic_json(settings_path, restored)
+        if previous_manifest is not None:
+            atomic_json(manifest_path, previous_manifest)
+        else:
+            manifest_path.unlink()
     except BaseException:
         os.replace(retired, release)
+        atomic_json(settings_path, settings)
+        atomic_json(manifest_path, manifest)
         raise
     shutil.rmtree(retired)
-    manifest_path.unlink()
     print(f"rolled back: restored {package_source(original)}")
     print("Restart Pi separately when activation is coordinated; no running session was reloaded.")
 

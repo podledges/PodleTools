@@ -34,10 +34,10 @@ if python3 "$root/install.py" install --source "$source_dir" --agent-dir "$scrat
 fi
 grep -q 'found 2' "$scratch/rejected.out"
 cmp "$scratch/rejected-before.json" "$scratch/rejected-agent/settings.json"
-[[ ! -e "$scratch/rejected-agent/todoattention/releases/rpiv-todo-2.9.0-attention-v1" ]]
+[[ ! -e "$scratch/rejected-agent/todoattention/releases/rpiv-todo-2.9.0-attention-v2" ]]
 
 python3 "$root/install.py" install --source "$source_dir" --agent-dir "$scratch/agent"
-release="$scratch/agent/todoattention/releases/rpiv-todo-2.9.0-attention-v1"
+release="$scratch/agent/todoattention/releases/rpiv-todo-2.9.0-attention-v2"
 [[ -f "$release/index.ts" ]]
 [[ -f "$release/node_modules/@juicesharp/rpiv-config/package.json" ]]
 [[ -f "$release/node_modules/typebox/package.json" ]]
@@ -58,35 +58,23 @@ if grep -Fq "npm:@juicesharp/rpiv-todo" "$scratch/list.out"; then
 fi
 
 # Exercise the configured package through actual Pi discovery, not an explicit
-# index.ts path. The helper only seeds structured task state and shuts Pi down.
+# index.ts path. The helper only observes cadence and shuts Pi down; the actual
+# owner replays synthetic session data and is the sole widget registrar.
 mkdir -p "$release/tests"
 cp "$root/tests/smoke-extension.ts" "$release/tests/"
 printf '{"defaultProjectTrust":"always","packages":["%s"]}\n' "$release" > "$scratch/agent/settings.json"
+mkdir -p "$scratch/home" "$scratch/config"
+python3 "$root/tests/seed-session.py" "$scratch/session.jsonl"
+HOME="$scratch/home" XDG_CONFIG_HOME="$scratch/config" \
 PI_CODING_AGENT_DIR="$scratch/agent" \
 PI_CODING_AGENT_SESSION_DIR="$scratch/sessions" \
 PI_TUI_WRITE_LOG="$scratch/tui.log" \
+TODOATTENTION_CADENCE_FILE="$scratch/cadence.json" \
 PI_OFFLINE=1 \
-timeout 10 script -qefc \
-  "pi --no-session --no-tools -e '$release/tests/smoke-extension.ts' --no-skills --no-prompt-templates --no-context-files --no-themes --theme '$theme' --use-theme neon-afterglow --offline" \
+timeout 15 script -qefc \
+  "pi --session '$scratch/session.jsonl' --no-tools -e '$release/tests/smoke-extension.ts' --no-skills --no-prompt-templates --no-context-files --no-themes --theme '$theme' --use-theme neon-afterglow --offline" \
   "$scratch/typescript" >/dev/null
-python3 - "$scratch/tui.log" <<'PY'
-import re, sys
-from pathlib import Path
-raw = Path(sys.argv[1]).read_bytes()
-colors = {
-    b"#1": b"\x1b[38;2;255;255;0m\xe2\x97\x8f\x1b[39m",
-    b"#2": b"\x1b[38;2;0;102;255m\xe2\x97\x8f\x1b[39m",
-    b"#3": b"\x1b[38;2;255;0;204m\xe2\x97\x8f\x1b[39m",
-    b"#4": b"\x1b[38;2;255;255;0m\xe2\x97\x8f\x1b[39m",
-}
-for task_id, color in colors.items():
-    if task_id + b"\x1b[39m " + color not in raw:
-        raise SystemExit(f"missing installed color beside {task_id.decode()}")
-text = re.sub(rb"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))", b"", raw)
-if b"#5 \xe2\x97\x8f Completed keeps completion style" in text:
-    raise SystemExit("completed row unexpectedly has an attention indicator")
-print("installed Pi TUI colors: ok")
-PY
+python3 "$root/tests/assert-tui.py" "$scratch/tui.log" "$scratch/cadence.json"
 
 # Restore the install-generated settings, then prove rollback preserves an
 # unrelated setting added after installation while restoring the one todo source.
