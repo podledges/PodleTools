@@ -1,0 +1,8 @@
+{
+  "name": "paste-linker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types --test-concurrency=1 --test tests/*.test.ts"
+  }
+}
