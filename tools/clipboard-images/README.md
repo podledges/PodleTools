@@ -1,11 +1,12 @@
 # Clipboard images (NixOS/Pi side)
 
-This folder contains two separate, opt-in NixOS/Pi workflows for Windows clipboard images after they become files:
+This folder contains separate, opt-in NixOS/Pi workflows for Windows clipboard images:
 
 - `clipboard-images latest` / `list` selects paths from an autosave folder only when a user or agent explicitly asks.
 - `paste-capture` invokes and validates one current-clipboard capture in an isolated staging folder.
+- `pi-extension/` consumes Alt+V in Pi, stages that capture, and attaches image bytes only on user submit to a vision model.
 
-Nothing runs in the background, starts a listener, deploys globally, uploads an image, or sends an image to a model. In particular, `paste-capture` never scans `Screenshots2` and never falls back to `latest` or `list`.
+Nothing starts a listener, writes the clipboard, restores WezTerm keybindings, or automatically sends an image. Installation is a separate current-user step. `paste-capture` and the Pi extension never scan `Screenshots2` or fall back to `latest` or `list`.
 
 ## Explicit `latest` / `list`
 
@@ -47,9 +48,9 @@ No installation or third-party package is needed; the CLI uses Python 3's standa
 
 Plain clipboard paste is not fixed by autosaving. Saving only creates a file handoff; no automatic model ingestion occurs.
 
-## `paste-capture` (Stage 1 screenshot paste)
+## `paste-capture`
 
-`paste_capture.py` is the WSL wrapper for the independently implemented Windows script [`PodleWindOS/tools/clipboard-images/Capture-CurrentClipboardImage.ps1`](https://github.com/podledges/PodleWindOS/tree/main/tools/clipboard-images). DoubleO should invoke this CLI with safe argv through `wsl.exe`; it should not reimplement capture or path mapping in Lua.
+`paste_capture.py` is the WSL wrapper for the independently implemented Windows script [`PodleWindOS/tools/clipboard-images/Capture-CurrentClipboardImage.ps1`](https://github.com/podledges/PodleWindOS/tree/main/tools/clipboard-images). The Pi extension invokes the deployed `/init`-safe wrapper at `/home/podles/.local/share/paste-linker/bin/paste-capture` with argv; it does not reimplement capture.
 
 On success it prints **one** JSON object and a newline:
 
@@ -61,7 +62,7 @@ On success it prints **one** JSON object and a newline:
 
 ### Run (source checkout only)
 
-No package install, PATH deploy, live WezTerm/Pi/Windows settings change, or listener change is performed.
+Running this source helper does not install a package, deploy to PATH, or change live WezTerm/Pi/Windows settings or listeners.
 
 ```bash
 tools/clipboard-images/bin/paste-capture \
@@ -70,16 +71,12 @@ tools/clipboard-images/bin/paste-capture \
 ```
 
 - `--script` (required): absolute path to the Windows capture script (WSL `/mnt/<drive>/...` or `C:\...`). Relative paths are rejected.
-- `--staging-dir` (optional): absolute WSL or Windows directory mapped to PowerShell `-DestinationDirectory`. Default is the Windows script default `LOCALAPPDATA/PodlePaste/staging` (`C:\Users\ayden\AppData\Local\PodlePaste\staging` in this setup). This is the only allowed artifact root.
+- `--staging-dir` (optional): absolute WSL or Windows directory mapped to PowerShell `-DestinationDirectory`. Default is `LOCALAPPDATA/PodlePaste/staging`.
 - `--powershell` (optional): absolute `powershell.exe`. Default is PATH / the WSL Windows PowerShell path.
 
-The wrapper always execs:
+The wrapper always execs `powershell.exe -NoProfile -STA -File <script> [-DestinationDirectory <staging>]` as an argv list (`shell=False`). Failures print a short message on stderr and exit nonzero, with **no** success JSON and **no** clipboard bytes.
 
-```text
-powershell.exe -NoProfile -STA -File <script> [-DestinationDirectory <staging>]
-```
-
-as an argv list (`shell=False`). Failures print a short message on stderr and exit nonzero, with **no** success JSON and **no** clipboard bytes.
+Live hosts should keep the `/init`-safe wrapper in `/home/podles/.local/share/paste-linker/bin/paste-capture`. Do not replace that wrapper with this source `bin/paste-capture` helper.
 
 ### Validation
 
@@ -96,6 +93,25 @@ A hash that belongs to a different file in the same directory is still a failure
 
 Capture publishes immutable uniquely named PNGs. This wrapper does not delete, overwrite, or age them. Review and remove staged files manually when you no longer need a draft.
 
+## Pi extension (`pi-extension/`)
+
+Pi 0.85.1 binds `app.clipboard.pasteImage` to Alt+V on Windows/WSL. That binding is **not** in Pi's reserved-conflict list, so `pi.registerShortcut("alt+v")` is consumed first and native `pasteImage` does not also run.
+
+On explicit Alt+V:
+
+1. Invoke `/home/podles/.local/share/paste-linker/bin/paste-capture --script <Capture-CurrentClipboardImage.ps1> --staging-dir <staging>`.
+2. Re-validate the returned staged PNG (path inside staging root, hash, PNG magic, size).
+3. Insert the comment-safe `#«pl1:...` marker into the editor. Widget: **staged, not sent**.
+4. On user submit, the `input` transform attaches `ImageContent` bytes only when hash/magic/root match. Non-vision models stay link-only. No auto-send.
+
+Ordinary text paste is unchanged. Typed filesystem paths are not attached. WezTerm is not involved.
+
+Marker / staging / transform modules were copied from PodleDoubleO `origin/main` (`23bac691…`, `home/podles/pi/extensions/paste-linker/`) via `git archive`. See `pi-extension/PROVENANCE`.
+
+### Live install
+
+`install-pi-extension.sh` copies the extension to `~/.local/share/podle-tools/clipboard-images/pi-extension` and atomically replaces only `~/.pi/agent/extensions/paste-linker` after verifying that symlink is user-owned. It does not `/reload` Pi, does not overwrite the paste-capture wrapper, and does not touch rpiv-todo or unrelated extensions.
+
 ## Counterpart ownership
 
 | Layer | Owner | Role |
@@ -103,17 +119,18 @@ Capture publishes immutable uniquely named PNGs. This wrapper does not delete, o
 | Windows current-clipboard PNG + JSON | PodleWindOS `Capture-CurrentClipboardImage.ps1` | STA capture, unique staging file, schema `1` |
 | This paste wrapper | PodleTools `paste_capture.py` | argv invoke, WSL map, validate path/hash/PNG |
 | Explicit autosave path lookup | PodleTools `clipboard_images.py` | user-requested `Screenshots2` latest/list only |
-| Alt+V / draft insert / submit attach | PodleDoubleO | consumes `paste-capture`; no capture reimplementation |
+| Alt+V / draft insert / submit attach | PodleTools `pi-extension/` | consume Alt+V in Pi; call paste-capture |
 | Listener autosave | PodleWindOS / temporarily live PodleShell | unchanged; paste does not use `Screenshots2` |
 
 There is no Python/package dependency between repositories. Configure `--script` to wherever the Windows script actually lives. Do not add a circular checkout dependency.
 
-Windows listener cutover, WezTerm live config, Pi extension install, and old PodleShell source cleanup are separate deployment steps. This directory is source plus tests only.
+Windows listener cutover, Pi extension install, and old PodleShell source cleanup are separate deployment steps. DoubleO docs/HM pointers are a later firstmate follow-up. Do not restore WezTerm Alt+V integration.
 
 ## Test
 
-Tests use synthetic temporary files and mocked Windows process output. They never open the live clipboard, touch the real `Screenshots2`, or invoke a real `Capture-CurrentClipboardImage.ps1`.
+Python tests use synthetic temporary files and mocked Windows process output. Node tests use synthetic fixtures and an isolated Pi key-dispatch harness. They never open the live clipboard, touch the real `Screenshots2`, invoke a real `Capture-CurrentClipboardImage.ps1`, or mutate the user terminal.
 
 ```bash
 python3 -m unittest discover -s tools/clipboard-images/tests -v
+node --experimental-strip-types --test-concurrency=1 --test tools/clipboard-images/pi-extension/tests/*.test.ts
 ```

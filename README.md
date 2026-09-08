@@ -23,7 +23,7 @@ Avoid storing secrets, tokens, private keys, or production credentials in this r
 ## Tools
 
 - [`TodoAttention/`](TodoAttention/) — compatibility-gated coloured attention renderers for the existing rpiv-todo store.
-- [`tools/clipboard-images/`](tools/clipboard-images/) — explicit latest/list screenshot path selection and the isolated `paste-capture` wrapper (source-only; no global deploy).
+- [`tools/clipboard-images/`](tools/clipboard-images/) — explicit screenshot path selection, isolated capture, and Pi-owned screenshot paste.
 - [`PiTelegramSetup/`](PiTelegramSetup/) — prepare and inspect a pinned Pi Telegram package without installing or connecting it.
 - [`HerdrTelegramNotifySetup/`](HerdrTelegramNotifySetup/) — prepare and inspect a pinned Herdr outbound Telegram notification plugin without activating it.
 - [`PonytailLitePilot/`](PonytailLitePilot/) — inspect, validate, and optionally run a pinned Ponytail lite package in isolated Pi state.

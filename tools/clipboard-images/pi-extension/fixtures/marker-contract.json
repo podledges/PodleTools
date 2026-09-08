@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "kind": "image",
+  "label": "Screenshot Pasted",
+  "path": "/mnt/c/Users/ayden/AppData/Local/PodlePaste/staging/paste-unique.png",
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "marker": "#«pl1:image:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:%2Fmnt%2Fc%2FUsers%2Fayden%2FAppData%2FLocal%2FPodlePaste%2Fstaging%2Fpaste-unique.png» Screenshot Pasted",
+  "capture_cli": {
+    "windows": "powershell.exe -NoProfile -STA -File <Capture-CurrentClipboardImage.ps1> [-DestinationDirectory <dir>]",
+    "tools": "paste-capture --script <absolute Windows script> [--staging-dir <dir>]",
+    "wezterm_argv": ["wsl.exe", "-d", "NixOS", "--", "/home/podles/github/podledges/PodleTools/tools/clipboard-images/bin/paste-capture", "--script", "/mnt/c/Users/ayden/AppData/Local/PodleWindOS/tools/clipboard-images/Capture-CurrentClipboardImage.ps1"]
+  }
+}

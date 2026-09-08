@@ -1,0 +1,15 @@
+source_repo=PodleDoubleO
+source_ref=origin/main
+source_commit=23bac69157a4303b116d0767dd0d804518ae1ffc
+source_path=home/podles/pi/extensions/paste-linker
+extract_method=git archive origin/main (read-only; not from a dirty checkout)
+
+copied_unchanged=marker.ts,staging.ts,transform.ts,capture-stdout.ts,fixtures/marker-contract.json,fixtures/tools-success.jsonl,fixtures/windos-success.jsonl
+copied_sha256:
+  marker.ts=24cf8422db8db0ed412556a6428fa5405fcf6f8b9e7e2d47df9bab2b0ff619c6
+  staging.ts=30078bcdabf7ae03706597520c784f575559621ea9b0385c1aafd39013260586
+  transform.ts=d38f1d0e21030cc1ff63c291b68079c59f750d42e677df6146f19ed4449e1643
+  capture-stdout.ts=537cc6f8ae3d168bc9592499a8bc8e325b2048b35e73818148f55a0882118180
+
+tools_owned_additions=index.ts (Alt+V registerShortcut + existing input/widget), capture.ts, tests without WezTerm, this PROVENANCE
+wezterm=not copied; WezTerm integration was surgically removed and must not be restored
