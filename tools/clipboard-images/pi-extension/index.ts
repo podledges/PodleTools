@@ -76,7 +76,7 @@ function insertMarker(ctx: ExtensionContext, marker: string): void {
   }
   if (typeof ctx.ui.setEditorText === "function") {
     const current = ctx.ui.getEditorText?.() ?? "";
-    ctx.ui.setEditorText(current ? `${current}\n${marker}` : marker);
+    ctx.ui.setEditorText(`${current}${current ? "\n" : ""}${marker}\n`);
   }
 }
 

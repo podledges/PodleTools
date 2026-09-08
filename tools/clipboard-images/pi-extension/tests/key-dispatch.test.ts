@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { Editor } from "/home/podles/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-tui/dist/index.js";
+import { KeybindingsManager } from "/home/podles/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js";
+import { ExtensionRunner } from "/home/podles/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/runner.js";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { sha256Hex } from "../staging.ts";
 import { parseMarkers, STAGED_WIDGET } from "../marker.ts";
+import { transformPastedScreenshots } from "../transform.ts";
 import {
   assertInstalledPiShortcutPrecedence,
   dispatchEditorKey,
@@ -345,18 +349,123 @@ test("installed Pi loader loads this extension with both shortcuts", async () =>
   assert.deepEqual(keys, ["alt+v", "ctrl+alt+v"]);
 });
 
-test("capture failure notifies and does not insert a marker", async () => {
+test("successive successful pastes preserve text and leave the real editor on the next line", async () => {
   resetPasteLinkerCaptureState();
-  const ui = createMockUi();
-  const ctx = createMockCtx(ui);
-  const { stageClipboardScreenshot } = await import("../index.ts");
+  const root = mkdtempSync(join(tmpdir(), "paste-editor-"));
+  const pngA = MIN_PNG;
+  const pngB = Buffer.from(MIN_PNG);
+  pngB[pngB.length - 9] = (pngB[pngB.length - 9] ?? 0) ^ 1;
+  const files = [join(root, "a.png"), join(root, "b.png")];
+  const bytes = [pngA, pngB];
+  files.forEach((path, index) => writeFileSync(path, bytes[index]!));
+  let call = 0;
+  const runner = async () => {
+    const index = call++;
+    return {
+      stdout: `${JSON.stringify({
+        schema: 1,
+        kind: "image",
+        label: "Screenshot Pasted",
+        path: files[index],
+        sha256: sha256Hex(bytes[index]!),
+      })}\n`,
+      stderr: "",
+      code: 0,
+    };
+  };
+
+  const editor = new Editor({ requestRender() {} } as never, {
+    borderColor: (text: string) => text,
+    selectList: {},
+  } as never);
+  editor.setText("typed text");
+  const notifications: string[] = [];
+  const ui = {
+    pasteToEditor: (text: string) => editor.insertTextAtCursor(text),
+    getEditorText: () => editor.getExpandedText(),
+    setEditorText: (text: string) => editor.setText(text),
+    setWidget() {},
+    setStatus() {},
+    notify: (message: string) => notifications.push(message),
+  };
+  const ctx = createMockCtx(ui as unknown as MockUi);
+  const options = {
+    captureBin: "/tmp/mock-paste-capture",
+    windowsScript: "/tmp/Capture-CurrentClipboardImage.ps1",
+    stagingDir: root,
+    runner,
+  };
+
+  await stageClipboardScreenshot(ctx, options);
+  assert.deepEqual(editor.getCursor(), { line: 1, col: 0 });
+  await stageClipboardScreenshot(ctx, options);
+  assert.deepEqual(editor.getCursor(), { line: 2, col: 0 });
+  assert.equal(notifications.length, 0);
+  const draft = editor.getExpandedText();
+  assert.ok(draft.startsWith("typed text#«pl1:"));
+  assert.deepEqual(parseMarkers(draft).map((marker) => marker.path), files);
+
+  const prior = { type: "image" as const, data: "prior", mimeType: "image/jpeg" };
+  const submitted = transformPastedScreenshots({
+    text: draft,
+    images: [prior],
+    modelAcceptsImages: true,
+    stagingRoot: root,
+  });
+  assert.deepEqual(
+    submitted.images.map((image) => image.data),
+    [prior.data, pngA.toString("base64"), pngB.toString("base64")],
+  );
+  assert.equal(submitted.attachedCount, 2);
+  assert.equal(submitted.text, "typed text[Screenshot Pasted]\n[Screenshot Pasted]\n");
+});
+
+test("capture failure leaves real editor text and cursor unchanged with no newline", async () => {
+  resetPasteLinkerCaptureState();
+  const editor = new Editor({ requestRender() {} } as never, {
+    borderColor: (text: string) => text,
+    selectList: {},
+  } as never);
+  editor.setText("typed text");
+  const beforeCursor = editor.getCursor();
+  const notifications: string[] = [];
+  const ui = {
+    pasteToEditor: (text: string) => editor.insertTextAtCursor(text),
+    getEditorText: () => editor.getExpandedText(),
+    setEditorText: (text: string) => editor.setText(text),
+    setWidget() {},
+    setStatus() {},
+    notify: (message: string) => notifications.push(message),
+  };
+  const ctx = createMockCtx(ui as unknown as MockUi);
   await stageClipboardScreenshot(ctx, {
     captureBin: "/tmp/mock-paste-capture",
     windowsScript: "/tmp/Capture-CurrentClipboardImage.ps1",
     stagingDir: "/tmp/staging",
     runner: async () => ({ stdout: "", stderr: "clipboard empty", code: 2 }),
   });
-  assert.equal(parseMarkers(ui.editorText).length, 0);
-  assert.equal(ui.notifications.length, 1);
-  assert.match(ui.notifications[0]?.message ?? "", /clipboard empty/);
+  assert.equal(editor.getExpandedText(), "typed text");
+  assert.deepEqual(editor.getCursor(), beforeCursor);
+  assert.equal(notifications.length, 1);
+  assert.match(notifications[0] ?? "", /clipboard empty/);
+});
+
+test("supported keybinding override removes duplicate Alt+V diagnostic", async () => {
+  const { loadExtensions } = await import(
+    "/home/podles/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js"
+  );
+  const indexPath = join(dirname(fileURLToPath(import.meta.url)), "..", "index.ts");
+  const loaded = await loadExtensions([indexPath], process.cwd());
+  const bindings = new KeybindingsManager({ "app.clipboard.pasteImage": [] });
+  const runner = new ExtensionRunner(
+    loaded.extensions,
+    loaded.runtime,
+    process.cwd(),
+    {} as never,
+    {} as never,
+  );
+  const shortcuts = runner.getShortcuts(bindings.getEffectiveConfig());
+  assert.deepEqual(runner.getShortcutDiagnostics(), []);
+  assert.ok(shortcuts.has("alt+v"));
+  assert.ok(shortcuts.has("ctrl+alt+v"));
 });

@@ -95,14 +95,16 @@ Capture publishes immutable uniquely named PNGs. This wrapper does not delete, o
 
 ## Pi extension (`pi-extension/`)
 
-Pi 0.85.1 binds `app.clipboard.pasteImage` to Alt+V on Windows/WSL. That binding is **not** in Pi's reserved-conflict list, so `pi.registerShortcut("alt+v")` is consumed first and native `pasteImage` does not also run. `ctrl+alt+v` is registered as the same handler.
+Pi 0.85.1 defaults `app.clipboard.pasteImage` to Alt+V on Windows/WSL. The extension consumes that key first, so the overlap does not cause two pastes, but Pi correctly reports the duplicate binding at startup. The supported installed configuration sets `app.clipboard.pasteImage` to `[]` in `keybindings.json`; `paste-linker` then solely owns Alt+V without a warning. `ctrl+alt+v` is registered as the same handler.
 
 On explicit Alt+V (or Ctrl+Alt+V):
 
 1. Invoke `/home/podles/.local/share/paste-linker/bin/paste-capture --script <Capture-CurrentClipboardImage.ps1> --staging-dir <staging>`.
 2. Re-validate the returned staged PNG (path inside staging root, hash, PNG magic, size).
-3. Insert the comment-safe `#«pl1:...` marker into the editor. Widget: **staged, not sent**.
+3. Insert the comment-safe `#«pl1:...` marker into the editor and leave the cursor at column zero of the following line. Widget: **staged, not sent**.
 4. On user submit, the `input` transform attaches `ImageContent` bytes only when hash/magic/root match. Non-vision models stay link-only. No auto-send.
+
+A failed capture only notifies: it does not alter the draft, move its cursor, insert a separator, or submit.
 
 Ordinary text paste is unchanged. Typed filesystem paths are not attached. WezTerm is not involved.
 
@@ -110,7 +112,7 @@ Marker / staging / transform modules were copied from PodleDoubleO `origin/main`
 
 ### Live install
 
-`install-pi-extension.sh` copies the extension to `~/.local/share/podle-tools/clipboard-images/pi-extension` and atomically replaces only `~/.pi/agent/extensions/paste-linker` after verifying that symlink is user-owned. It does not `/reload` Pi, does not overwrite the paste-capture wrapper, and does not touch rpiv-todo or unrelated extensions.
+`install-pi-extension.sh` copies the extension to `~/.local/share/podle-tools/clipboard-images/pi-extension`, atomically replaces only `~/.pi/agent/extensions/paste-linker` after verifying that symlink is user-owned, and atomically sets `app.clipboard.pasteImage` to `[]` in Pi's supported `keybindings.json` while preserving unrelated bindings. Its backup rollback restores the previous keybinding file. It does not `/reload` Pi, does not overwrite the paste-capture wrapper, and does not touch rpiv-todo or unrelated extensions.
 
 ## Counterpart ownership
 
@@ -124,7 +126,9 @@ Marker / staging / transform modules were copied from PodleDoubleO `origin/main`
 
 There is no Python/package dependency between repositories. Configure `--script` to wherever the Windows script actually lives. Do not add a circular checkout dependency.
 
-Windows listener cutover, Pi extension install, and old PodleShell source cleanup are separate deployment steps. DoubleO docs/HM pointers are a later firstmate follow-up. Do not restore WezTerm Alt+V integration.
+Windows listener cutover, Pi extension install, and old PodleShell source cleanup are separate deployment steps. Do not restore WezTerm Alt+V integration.
+
+PodleDoubleO PR 21 (`f1131b4`) is the canonical future Home Manager owner of a newer v2 adapter at the same sole extension path. This Tools package remains the currently installed, byte-for-byte source and a rollback reference. Applying the cursor/config behavior to DoubleO's v2 source or declarative Home Manager configuration is a separate PodleDoubleO-owned change; this repository must not create a second simultaneously loaded extension.
 
 ## Test
 
