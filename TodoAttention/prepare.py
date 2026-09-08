@@ -14,6 +14,10 @@ EXPECTED_NAME = "@juicesharp/rpiv-todo"
 EXPECTED_VERSION = "2.9.0"
 EXPECTED_HASHES = {
     "README.md": "6cf80812ff9ae1b9fb1bf6e39d86102e47e8b1a34b71969b0349f075c9069351",
+    "config.ts": "3fe24b3d3b128cabcbafc80a41f72b20907fd0edbdd84c8c57c391e27ffd76db",
+    "docs/configuration.md": "43fe87c55a8ad384c19578b2b5af6911aaf8388408d74da35e7e28b6fcd1a81c",
+    "index.ts": "509904d71a601ba2e2694c3f0fda1f014553eaafde1515ddd99dab8bb123d85a",
+    "todo-overlay.ts": "bcc44d001ff08cc4c42d019163d78214edc9df2f3ba9219080f01f13ad8520e3",
     "docs/overlay.md": "ca6c7c63a21597339d6ba3ba8669546cf0ae67f8708ddf7e567110bb4e06e78e",
     "docs/tool-schema.md": "2988883b86b657729b2ee9604c045d1de61f64bb6335ca3dbe725458cd1cb10f",
     "state/replay.ts": "222eacd01e0ce983e2d7dd5597f31111c6344ef290908ba09f0fe9f556f8a5c0",
@@ -53,13 +57,13 @@ def verify(source: Path) -> None:
         raise SystemExit("source compatibility check failed:\n" + "\n".join(mismatches))
 
 
-def git_apply(source: Path, check: bool, reverse: bool = False) -> None:
+def git_apply(source: Path, check: bool, reverse: bool = False, patch: Path = PATCH) -> None:
     command = ["git", "apply"]
     if check:
         command.append("--check")
     if reverse:
         command.append("--reverse")
-    command.append(str(PATCH.resolve()))
+    command.append(str(patch.resolve()))
     env = {**os.environ, "GIT_CEILING_DIRECTORIES": str(source.parent)}
     subprocess.run(command, cwd=source, env=env, check=True)
 

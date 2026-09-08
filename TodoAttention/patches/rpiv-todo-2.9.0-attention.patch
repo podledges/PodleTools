@@ -1,24 +1,70 @@
 diff --git a/README.md b/README.md
-index e1ad737..e4beca9 100644
+index e1ad737..f8a499c 100644
 --- a/README.md
 +++ b/README.md
-@@ -57,6 +57,11 @@ by status.
+@@ -57,6 +57,12 @@ by status.
  - **The overlay never eats your terminal.** Past the row budget it drops
    completed tasks first, truncates unfinished ones last, and tells you what it
    hid with `+3 more (2 completed, 1 pending)`.
 +- **Attention is explicit, not title decoration.** Every outstanding id has a
-+  renderer-owned `●`: yellow `#FFFF00` for waiting/unknown, neon blue
-+  `#0066FF` only for explicit active work, and the theme accent for captain
-+  input. See
++  renderer-owned indicator: static yellow `●` (`#FFFF00`) for waiting/unknown,
++  blue spinner (`#0066FF`, 150 ms/frame) only for explicit live active work,
++  and a static theme-accent dot for captain input. Completed uses `success` `✓`.
++  Waiting subtitles expose a caller reason or honest unknown fallback. See
 +  [Overlay and `/todos`](docs/overlay.md) for metadata and transition rules.
  - **The agent can sequence work, not just list it.** `blockedBy` dependencies are
    validated before anything is written — dangling ids, deleted dependencies,
    self-blocks, and cycles are all rejected.
+diff --git a/config.ts b/config.ts
+index d703a86..f50fe39 100644
+--- a/config.ts
++++ b/config.ts
+@@ -4,6 +4,8 @@ import { loadJsonConfigWithLegacyFallback, validateGuidanceFields } from "@juice
+ interface TodoConfig {
+ 	guidance?: GuidanceFields;
+ 	maxWidgetLines?: number;
++	/** Static blue dot instead of a spinner; no animation timer when true. */
++	reducedMotion?: boolean;
+ 	/**
+ 	 * Key spec for the overlay collapse/expand shortcut, in the same format as
+ 	 * pi-coding-agent keybinding ids (`modifier+key`, e.g. `ctrl+shift+t`, `alt+o`).
+@@ -41,6 +43,11 @@ export function getMaxWidgetLines(): number {
+ 	return lines;
+ }
+ 
++/** Uses the existing package config; no global Pi motion setting is exposed. */
++export function getReducedMotion(): boolean {
++	return loadConfig().reducedMotion === true;
++}
++
+ // Named keys accepted by pi-tui's `matchesKey` (keys.js switch on the parsed base key).
+ // parseKeyId lowercases the id before matching, so lowercase spellings are canonical.
+ const SPECIAL_KEYS = new Set([
+diff --git a/docs/configuration.md b/docs/configuration.md
+index 8174da5..f72f9e4 100644
+--- a/docs/configuration.md
++++ b/docs/configuration.md
+@@ -57,6 +57,15 @@ blank spacer sits outside the budget, so `12` renders up to 13 terminal rows.
+ - Pi's tool-output expansion mode (`ctrl+o` by default) temporarily overrides
+   this budget and shows every task; collapsing restores the configured budget.
+ 
++## `reducedMotion`
++
++**Default `false`.** Set `"reducedMotion": true` in this same config file to
++replace the live blue spinner with a static blue `●`, without an animation
++timer. Only boolean `true` enables the fallback. Read at repaint/tick time;
++turning animation back on takes effect on the next ordinary repaint. There is
++no file watcher and no separate Pi-wide reduced-motion API in the supported
++host. Waiting/input/completed/deleted states are always static.
++
+ ## `collapseKey`
+ 
+ **Default `"ctrl+shift+t"`.** The shortcut that collapses and expands the
 diff --git a/docs/overlay.md b/docs/overlay.md
-index 81c2b31..e151545 100644
+index 81c2b31..624b17c 100644
 --- a/docs/overlay.md
 +++ b/docs/overlay.md
-@@ -26,24 +26,29 @@ and taking the last `todo` tool result's snapshot, which replaces the whole list
+@@ -26,24 +26,41 @@ and taking the last `todo` tool result's snapshot, which replaces the whole list
  
  ```
  ● Todos (2/5)
@@ -39,16 +85,30 @@ index 81c2b31..e151545 100644
    completed.
 -- **Glyphs** — `○` pending, `◐` in_progress, `✓` completed, `✗` deleted.
 -  Completed and deleted subjects render dim and struck through.
+-- **activeForm** — appended dim in parentheses, only while the task is
+-  `in_progress`.
 +- **Status glyphs** — `○` pending, `◐` in_progress, `✓` completed, `✗`
 +  deleted. Completed and deleted subjects render dim and struck through.
-+- **Attention indicator** — the text glyph `●` appears beside every outstanding
-+  task id. Yellow `#FFFF00` means waiting, blocked, stale, or unknown; neon
-+  blue `#0066FF` means `in_progress` plus `metadata.attention="agent-working"` and no
-+  `blockedBy`; hot pink uses the active theme's `accent` (neon-afterglow:
-+  `#ff00cc`) for `metadata.attention="captain-input"`. Completed/deleted rows
-+  have no attention indicator and keep their existing completion presentation.
- - **activeForm** — appended dim in parentheses, only while the task is
-   `in_progress`.
++- **Attention indicator** — beside each outstanding id, static yellow `●`
++  (`#FFFF00`) means waiting, blocked, stale, or unknown. Blue (`#0066FF`)
++  requires `in_progress` plus `metadata.attention="agent-working"` and no
++  `blockedBy`. Only the live widget animates blue: `⠋ ⠙ ⠹ ⠸ ⠼ ⠴`, 150 ms
++  per frame; command/tool-result snapshots retain static blue dots. Captain
++  input overrides animation with a static `●` using the heading's `accent`
++  (`#ff00cc` in neon-afterglow). Completed rows use static `success` `✓`
++  (`#ccff00`, neon-afterglow's acidLime, also Telegram's connected token);
++  deleted is never completion. No extra attention marker on terminal states.
++- **Subtitle** — active work keeps `activeForm`. Waiting/input uses
++  `metadata.attentionReason`, then an explicit dependency or legacy actionable
++  waiting/failure label. Missing reasons honestly say `pending; reason unknown`
++  or `waiting; activity unconfirmed`; bare `supervising` is not a reason.
++  Reasons are sanitized for terminal safety. No failure is inferred from waiting.
++- **Motion** — one widget-local timer, only for displayed active indicators;
++  hidden/collapsed or too-narrow rows do not tick. Completion/removal/no active
++  work, widget disposal, and session shutdown (including reload/switch) stop it.
++  Frames request differential redraws, never model calls or task-store writes.
++  See [configuration](configuration.md#reducedmotion) for the static fallback.
++  This is not worker auto-binding: callers must update attention when work stops.
  - **Dependencies** — appended as `⛓ #1,#2` when the task has a `blockedBy` set.
 -- **`#id` prefix** — shown on every row only when at least one visible task
 -  carries a `blockedBy`. Without a `⛓ #N` anywhere, the per-row ids have nothing
@@ -58,7 +118,7 @@ index 81c2b31..e151545 100644
  - **Prefixes** — `├─` on each row, `└─` on the last one. A blank spacer line is
    always appended below the panel so it is not flush against the input box.
  
-@@ -93,12 +98,12 @@ row budget and auto-hiding:
+@@ -93,12 +110,12 @@ row budget and auto-hiding:
  ```
  2/7 completed · 1 in progress · 4 pending
  ── Pending ──
@@ -77,10 +137,10 @@ index 81c2b31..e151545 100644
    ✓ #1 Create DemoTodo domain entity
    ✓ #2 Create IDemoTodoRepository interface
 diff --git a/docs/tool-schema.md b/docs/tool-schema.md
-index bc82d03..acce3a0 100644
+index bc82d03..bc255ec 100644
 --- a/docs/tool-schema.md
 +++ b/docs/tool-schema.md
-@@ -51,6 +51,27 @@ for a key removes it, and emptying the record drops the field entirely.
+@@ -51,6 +51,38 @@ for a key removes it, and emptying the record drops the field entirely.
  `addBlockedBy` and `removeBlockedBy` are additive — do not resend the whole
  array.
  
@@ -101,6 +161,17 @@ index bc82d03..acce3a0 100644
 +`waiting`; only change it to `agent-working` in the same update that starts
 +actual work. Before pausing, blocking, or handing control back, set `attention`
 +to `waiting` (and move `in_progress` back to `pending` when appropriate).
++Supply `metadata.attentionReason` with an actionable reason, such as `awaiting
++CI`, `waiting for worker test results`, or `tests failed; fix assertion`.
++Clear obsolete reasons with `attentionReason: null` when resuming. A waiting
++state is not a failed state: only caller-supplied text reports a failure.
++
++There is no automatic worker-liveness binding, endpoint probe, or expiry timer.
++Callers own the truth of `agent-working`, including clearing stale assertions
++on interruption; a persisted explicit assertion is trusted on replay. The live
++widget animates only this asserted active state; historical tool/command
++snapshots stay static. See [overlay](overlay.md) and
++[reduced motion](configuration.md#reducedmotion).
 +Completed/deleted tasks have no attention indicator. A legacy leading `● `
 +title workaround is normalized away on create, subject update, or replay;
 +the rest of the semantic title is preserved.
@@ -108,6 +179,64 @@ index bc82d03..acce3a0 100644
  ## Status transitions
  
  | From | Allowed targets |
+diff --git a/index.ts b/index.ts
+index 6aaeca7..15cdd83 100644
+--- a/index.ts
++++ b/index.ts
+@@ -130,6 +130,7 @@ export default function (pi: ExtensionAPI, importOverlay: TodoOverlayImporter =
+ 	const loadTodoOverlay = makeTodoOverlayLoader(importOverlay);
+ 	let uiCtx: ExtensionUIContext | undefined;
+ 	let lifecycleGeneration = 0;
++	let prewarmTimer: ReturnType<typeof setTimeout> | undefined;
+ 
+ 	async function updateTodoOverlay(
+ 		resetCompletedDisplayState = false,
+@@ -204,7 +205,7 @@ export default function (pi: ExtensionAPI, importOverlay: TodoOverlayImporter =
+ 			if (!isStaleCtxError(e)) throw e;
+ 			return;
+ 		}
+-		if (!ctx.hasUI) return;
++		if (ctx.mode !== "tui") return;
+ 		// First UI-bearing session_start claims the foreground (the interactive
+ 		// launcher, by spawn-ordering) without eagerly loading the overlay.
+ 		if (getActiveRenderSession() === "") setActiveRenderSession(id);
+@@ -213,6 +214,12 @@ export default function (pi: ExtensionAPI, importOverlay: TodoOverlayImporter =
+ 		if (id !== getActiveRenderSession()) return;
+ 		const generation = ++lifecycleGeneration;
+ 		uiCtx = ctx.ui;
++		if (prewarmTimer !== undefined) clearTimeout(prewarmTimer);
++		prewarmTimer = setTimeout(() => {
++			prewarmTimer = undefined;
++			void loadTodoOverlay().catch(() => undefined);
++		}, PREWARM_DELAY_MS);
++		prewarmTimer.unref?.();
+ 		await updateTodoOverlay(true, generation);
+ 	});
+ 
+@@ -244,6 +251,8 @@ export default function (pi: ExtensionAPI, importOverlay: TodoOverlayImporter =
+ 			// Invalidate pending imports before clearing the foreground binding so a
+ 			// replaced session cannot inherit the stale overlay or UI context.
+ 			lifecycleGeneration++;
++			if (prewarmTimer !== undefined) clearTimeout(prewarmTimer);
++			prewarmTimer = undefined;
+ 			uiCtx = undefined;
+ 			// `dispose()`'s first act is setWidget(KEY, undefined) on a possibly-stale
+ 			// ui proxy, which can throw. evictSession(s) above already deleted this
+@@ -276,14 +285,6 @@ export default function (pi: ExtensionAPI, importOverlay: TodoOverlayImporter =
+ 		}
+ 	});
+ 
+-	// Evaluate the lazy graph after startup while Pi's boot-time dependency paths
+-	// are still stable. This loads no widget and constructs no overlay; those stay
+-	// deferred until a foreground session has visible tasks. A rejected pre-warm
+-	// is intentionally swallowed after loadTodoOverlay clears its memo, allowing
+-	// the first real update to retry. unref avoids holding an embedder open.
+-	const prewarmTimer = setTimeout(() => void loadTodoOverlay().catch(() => undefined), PREWARM_DELAY_MS);
+-	prewarmTimer.unref?.();
+-
+ 	pi.on("agent_start", async () => {
+ 		todoOverlay?.hideCompletedTasksFromPreviousTurn();
+ 	});
 diff --git a/state/replay.ts b/state/replay.ts
 index eec9425..190b796 100644
 --- a/state/replay.ts
@@ -173,15 +302,193 @@ index 0df4ba1..70e3df0 100644
  			if (params.description !== undefined) updated.description = params.description;
  			if (params.activeForm !== undefined) updated.activeForm = params.activeForm;
  			if (params.owner !== undefined) updated.owner = params.owner;
+diff --git a/todo-overlay.ts b/todo-overlay.ts
+index 1ea2ba1..49a1c4b 100644
+--- a/todo-overlay.ts
++++ b/todo-overlay.ts
+@@ -13,12 +13,12 @@
+  */
+ 
+ import type { ExtensionUIContext, Theme } from "@earendil-works/pi-coding-agent";
+-import { type TUI, truncateToWidth } from "@earendil-works/pi-tui";
+-import { COLLAPSE_KEY_OFF, getMaxWidgetLines, resolveCollapseKey } from "./config.js";
++import { type TUI, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
++import { COLLAPSE_KEY_OFF, getMaxWidgetLines, getReducedMotion, resolveCollapseKey } from "./config.js";
+ import { formatStatusLabel, t } from "./state/i18n-bridge.js";
+ import { selectHasActive, selectOverlayLayout, selectShowTaskIds, selectTodoCounts } from "./state/selectors.js";
+-import { getRenderState } from "./state/store.js";
+-import { formatOverlayTaskLine } from "./view/format.js";
++import { getActiveRenderSession, getRenderState } from "./state/store.js";
++import { ATTENTION_FRAMES, ATTENTION_INTERVAL_MS, classifyAttention, formatOverlayTaskLine } from "./view/format.js";
+ 
+ const WIDGET_KEY = "rpiv-todos";
+ 
+@@ -36,11 +36,50 @@ export class TodoOverlay {
+ 	private hiddenCompletedTaskIds = new Set<number>();
+ 	private lastNextId: number | undefined;
+ 	private collapsed = false;
++	private animationTimer: ReturnType<typeof setInterval> | undefined;
++	private animationFrame = 0;
++	private animatedIds = new Set<number>();
++	private renderSession: string | undefined;
++	private widgetGeneration = 0;
++
++	private stopAnimation(): void {
++		if (this.animationTimer !== undefined) clearInterval(this.animationTimer);
++		this.animationTimer = undefined;
++		this.animationFrame = 0;
++		this.animatedIds.clear();
++	}
++
++	private canAnimate(): boolean {
++		return !!this.tui && !this.collapsed && !getReducedMotion() &&
++			this.renderSession === getActiveRenderSession() &&
++			getRenderState().tasks.some((task) => this.animatedIds.has(task.id) && classifyAttention(task) === "agent-working");
++	}
++
++	private syncAnimation(): void {
++		if (!this.canAnimate()) {
++			this.stopAnimation();
++			return;
++		}
++		if (this.animationTimer !== undefined) return;
++		this.animationTimer = setInterval(() => {
++			if (!this.canAnimate()) {
++				this.stopAnimation();
++				// Refresh a changed state/config once, never redraw an old session.
++				if (this.renderSession === getActiveRenderSession()) this.tui?.requestRender();
++				return;
++			}
++			this.animationFrame = (this.animationFrame + 1) % ATTENTION_FRAMES.length;
++			this.tui?.requestRender(); // Differential/coalesced, never requestRender(true).
++		}, ATTENTION_INTERVAL_MS);
++		this.animationTimer.unref?.();
++	}
+ 
+ 	setUICtx(ctx: ExtensionUIContext): void {
+ 		// Identity-compare so repeat session_start handlers are idempotent;
+ 		// on identity change (/reload) invalidate so update() re-registers.
+ 		if (ctx !== this.uiCtx) {
++			this.dispose();
++			this.renderSession = getActiveRenderSession();
+ 			this.uiCtx = ctx;
+ 			this.widgetRegistered = false;
+ 			this.tui = undefined;
+@@ -51,8 +90,10 @@ export class TodoOverlay {
+ 		if (!this.uiCtx) return;
+ 		const snapshot = this.getSnapshot();
+ 		const visible = this.selectOverlayTasks(snapshot);
++		if (!this.canAnimate()) this.stopAnimation();
+ 
+ 		if (visible.length === 0) {
++			this.stopAnimation();
+ 			if (this.widgetRegistered) {
+ 				this.uiCtx.setWidget(WIDGET_KEY, undefined);
+ 				this.widgetRegistered = false;
+@@ -62,12 +103,21 @@ export class TodoOverlay {
+ 		}
+ 
+ 		if (!this.widgetRegistered) {
++			const generation = ++this.widgetGeneration;
+ 			this.uiCtx.setWidget(
+ 				WIDGET_KEY,
+ 				(tui, factoryTheme) => {
+-					this.tui = tui;
++					if (generation === this.widgetGeneration) this.tui = tui;
+ 					return {
+-						render: (width: number) => this.renderWidget(this.uiCtx?.theme ?? factoryTheme, width),
++						render: (width: number) => generation === this.widgetGeneration
++							? this.renderWidget(this.uiCtx?.theme ?? factoryTheme, width) : [],
++						dispose: () => {
++							if (generation !== this.widgetGeneration) return;
++							this.stopAnimation();
++							this.widgetGeneration++;
++							this.widgetRegistered = false;
++							this.tui = undefined;
++						},
+ 						invalidate: () => {
+ 							// No rendered strings are cached. Pi invalidates on theme changes;
+ 							// the next render reads uiCtx.theme.
+@@ -83,6 +133,7 @@ export class TodoOverlay {
+ 	}
+ 
+ 	resetCompletedDisplayState(): void {
++		this.stopAnimation();
+ 		this.completedTaskIdsPendingHide.clear();
+ 		this.hiddenCompletedTaskIds.clear();
+ 		this.lastNextId = undefined;
+@@ -99,6 +150,7 @@ export class TodoOverlay {
+ 
+ 	toggleCollapse(): void {
+ 		this.collapsed = !this.collapsed;
++		if (this.collapsed) this.stopAnimation();
+ 		// Forced full redraw on the collapsed↔expanded height step, mirroring the
+ 		// lane-dock's requestRender(shapeChanged); distinct from the non-forced
+ 		// requestRender() refresh paths in update()/hideCompletedTasksFromPreviousTurn().
+@@ -138,7 +190,10 @@ export class TodoOverlay {
+ 	private renderWidget(theme: Theme, width: number): string[] {
+ 		const snapshot = this.getSnapshot();
+ 		const overlayTasks = this.selectOverlayTasks(snapshot);
+-		if (overlayTasks.length === 0) return [];
++		if (overlayTasks.length === 0 || this.renderSession !== getActiveRenderSession()) {
++			this.stopAnimation();
++			return [];
++		}
+ 
+ 		const overlayState = { tasks: overlayTasks, nextId: snapshot.nextId };
+ 		const truncate = (line: string): string => truncateToWidth(line, width, "…");
+@@ -161,6 +216,7 @@ export class TodoOverlay {
+ 		// shortcut was bound and the overlay collapsed) — render a static collapsed
+ 		// label instead of splicing the sentinel into the placeholder.
+ 		if (this.collapsed) {
++			this.stopAnimation();
+ 			const key = resolveCollapseKey();
+ 			const hint =
+ 				key === COLLAPSE_KEY_OFF
+@@ -177,8 +233,15 @@ export class TodoOverlay {
+ 		// preserves compatibility with hosts predating getToolsExpanded().
+ 		const bodyBudget = this.uiCtx?.getToolsExpanded?.() === true ? overlayTasks.length : getMaxWidgetLines() - 1;
+ 		const layout = selectOverlayLayout(overlayState, bodyBudget);
++		this.animatedIds = new Set(layout.visible.filter((task) =>
++			classifyAttention(task) === "agent-working" &&
++			// Reserve a column for truncation's ellipsis: don't tick invisible glyphs.
++			width >= visibleWidth(`├─ ◐ #${task.id} `) + 2,
++		).map((task) => task.id));
++		this.syncAnimation();
++		const frame = this.animationTimer === undefined ? undefined : this.animationFrame;
+ 		for (const task of layout.visible) {
+-			lines.push(truncate(`${theme.fg("dim", "├─")} ${formatOverlayTaskLine(task, theme, showIds)}`));
++			lines.push(truncate(`${theme.fg("dim", "├─")} ${formatOverlayTaskLine(task, theme, showIds, frame)}`));
+ 		}
+ 
+ 		const newlyDisplayedCompletedTaskIds = overlayTasks
+@@ -224,11 +287,16 @@ export class TodoOverlay {
+ 	}
+ 
+ 	dispose(): void {
+-		if (this.uiCtx) this.uiCtx.setWidget(WIDGET_KEY, undefined);
++		// Clear resources BEFORE touching a potentially stale Pi context proxy.
++		const ui = this.uiCtx;
++		this.stopAnimation();
++		this.widgetGeneration++;
+ 		this.widgetRegistered = false;
+ 		this.tui = undefined;
+ 		this.uiCtx = undefined;
++		this.renderSession = undefined;
+ 		this.collapsed = false;
+ 		this.resetCompletedDisplayState();
++		ui?.setWidget(WIDGET_KEY, undefined);
+ 	}
+ }
 diff --git a/todo.ts b/todo.ts
-index 55420d2..593cb71 100644
+index 55420d2..d3e65a2 100644
 --- a/todo.ts
 +++ b/todo.ts
 @@ -62,6 +62,7 @@ export const DEFAULT_PROMPT_GUIDELINES: string[] = [
  	"Use blockedBy to express dependencies (A is blocked by B). On create, pass blockedBy as the initial set. On update, use addBlockedBy / removeBlockedBy (additive merge — do not resend the full array). Cycles are rejected.",
  	"list hides tombstoned (deleted) tasks by default; pass includeDeleted:true to see them. Pass status to filter by a single status.",
  	"Subject must be short and imperative (e.g. 'Research existing tool'); description is for long-form detail. activeForm is a present-continuous label shown while in_progress.",
-+	"Set metadata.attention to captain-input only while a captain answer is required. Set it to agent-working together with in_progress only while work is actually underway; clear or set waiting before pausing, blocking, or handing back. Unknown attention renders as waiting.",
++	"Set metadata.attention to captain-input only while a captain answer is required. Set it to agent-working together with in_progress only while work is actually underway; clear or set waiting before pausing, blocking, or handing back. Unknown attention renders as waiting. Supply metadata.attentionReason with a concrete waiting/input/failure reason (e.g. awaiting CI or waiting for worker test results), not supervising; clear obsolete reasons when work resumes. Activity is caller-asserted, not automatically bound to worker liveness.",
  ];
  
  export function registerTodoTool(pi: ExtensionAPI): void {
@@ -226,7 +533,7 @@ index cbb59e5..d4e43ce 100644
  	return (
  		value
 diff --git a/view/format.ts b/view/format.ts
-index 605c100..ae964f2 100644
+index 605c100..4583028 100644
 --- a/view/format.ts
 +++ b/view/format.ts
 @@ -3,7 +3,7 @@ import { Text } from "@earendil-works/pi-tui";
@@ -238,7 +545,16 @@ index 605c100..ae964f2 100644
  import type { Task, TaskAction, TaskDetails, TaskMutationParams, TaskStatus } from "../tool/types.js";
  
  // Re-export so legacy import paths (todo.ts, tests) continue to resolve;
-@@ -46,6 +46,56 @@ export const ACTION_GLYPH: Record<TaskAction, string> = {
+@@ -17,7 +17,7 @@ export { formatStatusLabel };
+ export const STATUS_GLYPH: Record<TaskStatus, string> = {
+ 	pending: "○",
+ 	in_progress: "◐",
+-	completed: "●",
++	completed: "✓",
+ 	deleted: "⊘",
+ };
+ 
+@@ -46,9 +46,61 @@ export const ACTION_GLYPH: Record<TaskAction, string> = {
  	clear: "∅",
  };
  
@@ -249,6 +565,8 @@ index 605c100..ae964f2 100644
 +export const ACTIVE_BLUE_HEX = "#0066FF";
 +export const WAITING_YELLOW_RGB = [255, 255, 0] as const;
 +export const WAITING_YELLOW_HEX = "#FFFF00";
++export const ATTENTION_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴"] as const;
++export const ATTENTION_INTERVAL_MS = 150; // 6⅔ fps, one clock for the live widget.
 +
 +/**
 + * Classify only outstanding tasks. Captain input is explicit and wins. Active
@@ -272,13 +590,13 @@ index 605c100..ae964f2 100644
 +	return `\u001b[38;2;${rgb.join(";")}m${text}\u001b[39m`;
 +}
 +
-+/** The one renderer-owned attention glyph, styled from structured task data. */
-+export function formatAttentionIndicator(task: Task, theme: Theme): string {
++/** Only the live widget supplies a frame. Historical results stay static. */
++export function formatAttentionIndicator(task: Task, theme: Theme, frame?: number): string {
 +	switch (classifyAttention(task)) {
 +		case "captain-input":
 +			return theme.fg("accent", "●");
 +		case "agent-working":
-+			return truecolor(ACTIVE_BLUE_RGB, "●");
++			return truecolor(ACTIVE_BLUE_RGB, frame === undefined ? "●" : ATTENTION_FRAMES[frame % ATTENTION_FRAMES.length]!);
 +		case "waiting":
 +			return truecolor(WAITING_YELLOW_RGB, "●");
 +		case undefined:
@@ -286,16 +604,25 @@ index 605c100..ae964f2 100644
 +	}
 +}
 +
-+function formatTaskIdWithAttention(task: Task, theme: Theme): string {
++function formatTaskIdWithAttention(task: Task, theme: Theme, frame?: number): string {
 +	const id = theme.fg("dim", `#${task.id}`);
-+	const indicator = formatAttentionIndicator(task, theme);
++	const indicator = formatAttentionIndicator(task, theme, frame);
 +	return indicator ? `${id} ${indicator}` : id;
 +}
 +
  /**
   * Glyph for the persistent overlay's per-task row. Differs from `STATUS_GLYPH`
-  * for `completed` (`✓` vs `●`) and `deleted` (`✗` vs `⊘`) because the
-@@ -73,12 +123,12 @@ export function formatOverlayTaskLine(t: Task, theme: Theme, showId: boolean): s
+- * for `completed` (`✓` vs `●`) and `deleted` (`✗` vs `⊘`) because the
++ * for `deleted` (`✗` vs `⊘`) because the
+  * overlay caller never renders a `deleted` row but uses `✗` in its
+  * error-toned palette. Mirrors pre-refactor `todo-overlay.ts:23-33`.
+  */
+@@ -69,34 +121,54 @@ export function overlayStatusGlyph(status: TaskStatus, theme: Theme): string {
+  * Format a single task row for the persistent overlay. The subject color
+  * reflects task state while IDs and supporting metadata stay visually quiet.
+  */
+-export function formatOverlayTaskLine(t: Task, theme: Theme, showId: boolean): string {
++export function formatOverlayTaskLine(t: Task, theme: Theme, showId: boolean, frame?: number): string {
  	const glyph = overlayStatusGlyph(t.status, theme);
  	const subjectColor =
  		t.status === "in_progress" ? "accent" : t.status === "completed" || t.status === "deleted" ? "muted" : "text";
@@ -306,11 +633,16 @@ index 605c100..ae964f2 100644
  	}
  	let line = `${glyph}`;
 -	if (showId) line += ` ${theme.fg("dim", `#${t.id}`)}`;
-+	if (showId) line += ` ${formatTaskIdWithAttention(t, theme)}`;
++	if (showId) line += ` ${formatTaskIdWithAttention(t, theme, frame)}`;
  	line += ` ${subject}`;
- 	if (t.status === "in_progress" && t.activeForm) {
- 		line += ` ${theme.fg("muted", `(${sanitizeTerminalText(t.activeForm)})`)}`;
-@@ -89,14 +139,12 @@ export function formatOverlayTaskLine(t: Task, theme: Theme, showId: boolean): s
+-	if (t.status === "in_progress" && t.activeForm) {
+-		line += ` ${theme.fg("muted", `(${sanitizeTerminalText(t.activeForm)})`)}`;
+-	}
++	const subtitle = formatAttentionSubtitle(t);
++	if (subtitle) line += ` ${theme.fg("muted", `(${subtitle})`)}`;
+ 	if (t.blockedBy && t.blockedBy.length > 0) {
+ 		line += ` ${theme.fg("muted", `⛓ ${t.blockedBy.map((id) => `#${id}`).join(",")}`)}`;
+ 	}
  	return line;
  }
  
@@ -319,9 +651,33 @@ index 605c100..ae964f2 100644
 - * indented bullet prefix). Pre-refactor `todo.ts:670-674`.
 - */
 -export function formatCommandTaskLine(t: Task, glyph: string): string {
+-	const form = t.status === "in_progress" && t.activeForm ? ` (${sanitizeTerminalText(t.activeForm)})` : "";
++/** Display-only reasons: never synthesize a failure or a nonexistent blocker. */
++export function formatAttentionSubtitle(task: Task): string {
++	const attention = classifyAttention(task);
++	if (attention === undefined) return "";
++	const clean = (value: unknown): string => {
++		if (typeof value !== "string") return "";
++		const text = sanitizeTerminalText(value).trim();
++		return /^supervising[.!…]*$/i.test(text) ? "" : text;
++	};
++	const reason = clean(task.metadata?.attentionReason);
++	const form = clean(task.activeForm);
++	if (attention === "agent-working") return form || reason;
++	if (reason) return reason;
++	if (attention === "captain-input") return form || "awaiting captain input";
++	if (task.blockedBy?.length) return `blocked by dependency ${task.blockedBy.map((id) => `#${id}`).join(", ")}`;
++	// Preserve legacy actionable waiting/failure labels, not a stale working verb.
++	if (/^(waiting|awaiting|blocked|paused|failed|failure|error|needs|requires)\b/i.test(form)) return form;
++	if (task.metadata?.attention === "stale") return "activity stale; awaiting update";
++	return task.status === "pending" ? "pending; reason unknown" : "waiting; activity unconfirmed";
++}
++
 +/** Format a themed task line for `/todos` and detailed tool results. */
 +export function formatCommandTaskLine(t: Task, glyph: string, theme: Theme): string {
- 	const form = t.status === "in_progress" && t.activeForm ? ` (${sanitizeTerminalText(t.activeForm)})` : "";
++	const subtitle = formatAttentionSubtitle(t);
++	const form = subtitle ? ` (${subtitle})` : "";
++	if (t.status === "completed") glyph = theme.fg("success", "✓");
  	const block = t.blockedBy?.length ? `    ⛓ ${t.blockedBy.map((id) => `#${id}`).join(",")}` : "";
 -	return `  ${glyph} #${t.id} ${sanitizeTerminalText(t.subject)}${form}${block}`;
 +	const subject = sanitizeTerminalText(normalizeLegacyTitleMarker(t.subject));
@@ -329,7 +685,7 @@ index 605c100..ae964f2 100644
  }
  
  // ---------------------------------------------------------------------------
-@@ -117,7 +165,7 @@ export function renderTodoCall(
+@@ -117,7 +189,7 @@ export function renderTodoCall(
  	let text = theme.fg("toolTitle", theme.bold("todo ")) + theme.fg("muted", glyph);
  
  	if (args.action === "create" && args.subject) {
@@ -338,7 +694,7 @@ index 605c100..ae964f2 100644
  	} else if (
  		(args.action === "update" || args.action === "get" || args.action === "delete") &&
  		args.id !== undefined
-@@ -130,35 +178,38 @@ export function renderTodoCall(
+@@ -130,35 +202,40 @@ export function renderTodoCall(
  	return new Text(text, 0, 0);
  }
  
@@ -394,9 +750,11 @@ index 605c100..ae964f2 100644
 +	if (task) {
 +		const status = task.status;
 +		const attention = formatAttentionIndicator(task, theme);
++		const subtitle = formatAttentionSubtitle(task);
 +		const idAndAttention = attention ? `${theme.fg("dim", `#${task.id}`)} ${attention}` : theme.fg("dim", `#${task.id}`);
 +		return new Text(
-+			`${theme.fg(STATUS_COLOR[status], `${STATUS_GLYPH[status]} ${formatStatusLabel(status)}`)} ${idAndAttention}`,
++			`${theme.fg(STATUS_COLOR[status], `${STATUS_GLYPH[status]} ${formatStatusLabel(status)}`)} ${idAndAttention}` +
++				(subtitle ? ` ${theme.fg("muted", `(${subtitle})`)}` : ""),
 +			0,
 +			0,
 +		);

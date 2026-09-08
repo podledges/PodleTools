@@ -1,11 +1,5 @@
 #!/usr/bin/env node
 const assert = require("node:assert/strict");
-const path = require("node:path");
-const { createJiti } = require(process.env.JITI_PATH);
-
-const root = path.resolve(process.argv[2]);
-const jiti = createJiti(process.cwd(), { interopDefault: true });
-const load = (relative) => jiti.import(path.join(root, relative));
 const ansi = (r, g, b, text) => `\x1b[38;2;${r};${g};${b}m${text}\x1b[39m`;
 const colors = {
   accent: [255, 0, 204],
@@ -27,13 +21,7 @@ const theme = {
 };
 const base = (overrides = {}) => ({ id: 1, subject: "Semantic title", status: "pending", ...overrides });
 
-(async () => {
-  const format = await load("view/format.ts");
-  const reducer = await load("state/state-reducer.ts");
-  const replay = await load("state/replay.ts");
-  const sanitize = await load("tool/sanitize.ts");
-  const selectors = await load("state/selectors.ts");
-  const tui = await jiti.import("@earendil-works/pi-tui");
+module.exports = async function testRenderer({ format, reducer, replay, sanitize, selectors, tui }) {
 
   const yellow = ansi(255, 255, 0, "●");
   const blue = ansi(0, 102, 255, "●");
@@ -66,6 +54,33 @@ const base = (overrides = {}) => ({ id: 1, subject: "Semantic title", status: "p
   assert.equal(format.formatAttentionIndicator(base({ status: "deleted" }), theme), "");
   assert.equal(format.ACTIVE_BLUE_HEX, "#0066FF");
   assert.equal(format.WAITING_YELLOW_HEX, "#FFFF00");
+
+  // Waiting reasons remain honest, actionable, static, and terminal-safe.
+  for (const [fields, expected] of [
+    [{}, "pending; reason unknown"],
+    [{ status: "in_progress", activeForm: "implementing changes" }, "waiting; activity unconfirmed"],
+    [{ status: "in_progress", activeForm: "supervising" }, "waiting; activity unconfirmed"],
+    [{ activeForm: "waiting for worker test results" }, "waiting for worker test results"],
+    [{ blockedBy: [2, 3] }, "blocked by dependency #2, #3"],
+    [{ metadata: { attention: "waiting", attentionReason: "awaiting CI" }, blockedBy: [2] }, "awaiting CI"],
+    [{ metadata: { attention: "waiting", attentionReason: "tests failed; fix assertion" } }, "tests failed; fix assertion"],
+    [{ metadata: { attention: "stale" } }, "activity stale; awaiting update"],
+    [{ metadata: { attention: "captain-input" } }, "awaiting captain input"],
+    [{ metadata: { attention: "unknown", attentionReason: 42 } }, "pending; reason unknown"],
+    [{ status: "completed", metadata: { attention: "captain-input", attentionReason: "old reason" } }, ""],
+    [{ status: "deleted" }, ""],
+  ]) assert.equal(format.formatAttentionSubtitle(base(fields)), expected);
+  const dangerous = format.formatAttentionSubtitle(base({ metadata: { attentionReason: "awaiting\nCI\x1b[31m\u202e" } }));
+  assert.ok(!/[\n\x1b\u202e]/.test(dangerous));
+  for (let frame = 0; frame < 12; frame++) {
+    assert.equal(format.formatAttentionIndicator(base({ metadata: { attention: "captain-input" } }), theme, frame), pink);
+    assert.equal(format.formatAttentionIndicator(base({ blockedBy: [2], metadata: { attention: "agent-working" } }), theme, frame), yellow);
+  }
+  // Theme tokens, not approximated hex: input follows title; check follows connected.
+  const alternate = { ...theme, fg: (token, text) => `<${token}>${text}</${token}>` };
+  assert.equal(format.formatAttentionIndicator(base({ metadata: { attention: "captain-input" } }), alternate), "<accent>●</accent>");
+  assert.equal(format.overlayStatusGlyph("completed", alternate), "<success>✓</success>");
+  assert.equal(format.overlayStatusGlyph("completed", theme), ansi(204, 255, 0, "✓"));
 
   // IDs remain visible and the indicator is immediately beside the ID.
   const state = { tasks: [base()], nextId: 2 };
@@ -150,6 +165,8 @@ const base = (overrides = {}) => ({ id: 1, subject: "Semantic title", status: "p
   assert.equal((list.match(/\x1b\[38;2;0;102;255m●\x1b\[39m/g) || []).length, 1);
   const completedLine = list.split("\n").find((line) => line.includes("#4"));
   const deletedLine = list.split("\n").find((line) => line.includes("#5"));
+  assert.ok(completedLine.includes(ansi(204, 255, 0, "✓")));
+  assert.ok(!deletedLine.includes(ansi(204, 255, 0, "✓")));
   assert.ok(completedLine && !completedLine.includes(blue) && !completedLine.includes(pink) && !completedLine.includes(yellow));
   assert.ok(deletedLine && !deletedLine.includes(blue) && !deletedLine.includes(pink) && !deletedLine.includes(yellow));
   const create = format.renderTodoResult({ details: { action: "create", params: { subject: "waiting" }, tasks: [base()], nextId: 2 } }, theme).render(80).join("\n");
@@ -164,8 +181,16 @@ const base = (overrides = {}) => ({ id: 1, subject: "Semantic title", status: "p
   assert.ok(deleted.includes("#5"));
   assert.ok(!deleted.includes(yellow) && !deleted.includes(blue) && !deleted.includes(pink));
 
+  const complete = format.renderTodoResult({ details: { action: "update", params: { id: 4 }, tasks, nextId: 6 } }, theme).render(80).join("\n");
+  assert.ok(complete.includes("\x1b[38;2;204;255;0m✓"));
+  const preserved = base({ blockedBy: [2], owner: "worker", metadata: { attention: "waiting", attentionReason: "awaiting CI", unrelated: { keep: 1 } } });
+  const original = JSON.stringify(preserved);
+  format.formatOverlayTaskLine(preserved, theme, true, 5);
+  assert.equal(JSON.stringify(preserved), original);
+  const dependencyState = { tasks: [preserved, base({ id: 2 })], nextId: 3 };
+  const result = reducer.applyTaskMutation(dependencyState, "update", { id: 1, metadata: { attentionReason: null } });
+  assert.deepEqual(result.state.tasks[0].blockedBy, [2]);
+  assert.deepEqual(result.state.tasks[0].metadata, { attention: "waiting", unrelated: { keep: 1 } });
+  assert.equal(result.state.tasks[0].owner, "worker");
   console.log("renderer contract: ok");
-})().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+};

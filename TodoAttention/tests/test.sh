@@ -22,11 +22,6 @@ if python3 "$root/prepare.py" "$work/incompatible" >"$work/rejected.out" 2>&1; t
 fi
 grep -q 'source compatibility check failed' "$work/rejected.out"
 
-JITI_PATH=${JITI_PATH:-/home/podles/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/jiti/lib/jiti.cjs}
-NODE_PATH=${NODE_PATH:-/home/podles/.pi/agent/npm/node_modules}
-export JITI_PATH NODE_PATH
-node "$root/tests/renderer.test.cjs" "$work/rpiv-todo"
-
 # The maintained patch must remain exactly reproducible from the installed map.
 set +e
 (
@@ -44,6 +39,16 @@ if text != expected.read_text():
     raise SystemExit("maintained patch differs from freshly generated patch")
 PY
 
+# Let Pi own its dependency/compat resolution. Keep this full package fixture
+# separate from the exact patch-regeneration trees above.
+cp -a "$work/rpiv-todo" "$work/contract-package"
+mkdir -p "$work/contract-package/tests" "$work/contract-package/node_modules/@juicesharp" "$work/home" "$work/config" "$work/agent"
+ln -s "$(dirname "$source_dir")/rpiv-config" "$work/contract-package/node_modules/@juicesharp/rpiv-config"
+cp "$root/tests/contract-extension.ts" "$root/tests/renderer.test.cjs" "$root/tests/animation.test.cjs" "$work/contract-package/tests/"
+HOME="$work/home" XDG_CONFIG_HOME="$work/config" PI_CODING_AGENT_DIR="$work/agent" PI_OFFLINE=1 \
+  node "$root/tests/sdk-test.mjs" "$work/contract-package/tests/contract-extension.ts"
+
 "$root/tests/install-test.sh"
+python3 "$root/tests/upgrade-test.py" "$source_dir" "$work/upgrade-agent"
 
 echo "TodoAttention tests: ok"

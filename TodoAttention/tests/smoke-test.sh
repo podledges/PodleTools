@@ -8,7 +8,7 @@ theme=${NEON_AFTERGLOW_THEME:-/home/podles/.pi/agent/themes/neon-afterglow.json}
 scratch="$root/.smoke-tmp"
 trap 'rm -rf "$scratch"' EXIT
 rm -rf "$scratch"
-mkdir -p "$scratch/agent" "$scratch/package/tests" "$scratch/package/node_modules/@juicesharp" "$scratch/package/node_modules/@earendil-works"
+mkdir -p "$scratch/agent" "$scratch/home" "$scratch/config/rpiv-todo" "$scratch/package/tests" "$scratch/package/node_modules/@juicesharp" "$scratch/package/node_modules/@earendil-works"
 cp -a "$source_dir/." "$scratch/package/"
 python3 "$root/prepare.py" "$scratch/package" --apply
 cp "$root/tests/smoke-extension.ts" "$scratch/package/tests/"
@@ -24,36 +24,20 @@ ln -s "$pi_core/node_modules/@earendil-works/pi-ai" "$scratch/package/node_modul
 ln -s "$pi_core/node_modules/@earendil-works/pi-tui" "$scratch/package/node_modules/@earendil-works/pi-tui"
 printf '{"defaultProjectTrust":"always"}\n' > "$scratch/agent/settings.json"
 
-PI_CODING_AGENT_DIR="$scratch/agent" \
-PI_CODING_AGENT_SESSION_DIR="$scratch/sessions" \
-PI_TUI_WRITE_LOG="$scratch/tui.log" \
-PI_OFFLINE=1 \
-timeout 10 script -qefc \
-  "pi --no-session --no-tools --no-extensions -e '$scratch/package/tests/smoke-extension.ts' -e '$scratch/package/index.ts' --no-skills --no-prompt-templates --no-context-files --no-themes --theme '$theme' --use-theme neon-afterglow --offline" \
-  "$scratch/typescript" >/dev/null
-
-python3 - "$scratch/tui.log" <<'PY'
-import re, sys
-from pathlib import Path
-raw = Path(sys.argv[1]).read_bytes()
-blue = b"\x1b[38;2;0;102;255m\xe2\x97\x8f\x1b[39m"
-pink = b"\x1b[38;2;255;0;204m\xe2\x97\x8f\x1b[39m"
-yellow = b"\x1b[38;2;255;255;0m\xe2\x97\x8f\x1b[39m"
-for task_id, color in [(b"#1", yellow), (b"#2", blue), (b"#3", pink), (b"#4", yellow)]:
-    if task_id + b"\x1b[39m " + color not in raw:
-        raise SystemExit(f"missing colored indicator beside {task_id.decode()}")
-text = re.sub(rb"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))", b"", raw)
-for row in [
-    b"\xe2\x97\x8f Todos (1/5)",
-    b"#1 \xe2\x97\x8f Yellow waiting",
-    b"#2 \xe2\x97\x8f Verified active",
-    b"#3 \xe2\x97\x8f Captain decision",
-    b"#4 \xe2\x97\x8f Blocked is yellow",
-    b"#5 Completed keeps completion style",
-]:
-    if row not in text:
-        raise SystemExit(f"missing TUI row: {row!r}")
-if b"#5 \xe2\x97\x8f Completed keeps completion style" in text:
-    raise SystemExit("completed row unexpectedly has an attention indicator")
-print("isolated Pi TUI smoke: ok")
-PY
+for mode in animated static; do
+  reduced=false
+  [[ $mode != static ]] || reduced=true
+  printf '{"reducedMotion":%s}\n' "$reduced" > "$scratch/config/rpiv-todo/config.json"
+  python3 "$root/tests/seed-session.py" "$scratch/session.jsonl"
+  HOME="$scratch/home" XDG_CONFIG_HOME="$scratch/config" \
+  PI_CODING_AGENT_DIR="$scratch/agent" \
+  PI_CODING_AGENT_SESSION_DIR="$scratch/sessions" \
+  PI_TUI_WRITE_LOG="$scratch/$mode-tui.log" \
+  TODOATTENTION_CADENCE_FILE="$scratch/$mode-cadence.json" \
+  PI_OFFLINE=1 \
+  timeout 15 script -qefc \
+    "pi --session '$scratch/session.jsonl' --no-tools --no-extensions -e '$scratch/package/tests/smoke-extension.ts' -e '$scratch/package/index.ts' --no-skills --no-prompt-templates --no-context-files --no-themes --theme '$theme' --use-theme neon-afterglow --offline" \
+    "$scratch/$mode-typescript" >/dev/null
+  python3 "$root/tests/assert-tui.py" "$scratch/$mode-tui.log" "$scratch/$mode-cadence.json" "$mode"
+done
+echo 'isolated Pi TUI smoke: ok'
