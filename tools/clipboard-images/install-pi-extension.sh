@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # Deploy the Tools-owned Pi screenshot extension for the current user.
+# Configures Pi's supported keybinding file so paste-linker solely owns Alt+V.
 # Does not overwrite the /init-safe paste-capture wrapper, Windows config,
 # unrelated Pi extensions, or rpiv-todo. Does not /reload Pi.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 SRC="${ROOT}/pi-extension"
+KEYBINDINGS_HELPER="${ROOT}/configure_pi_keybindings.py"
+PI_AGENT_DIR="${PI_CODING_AGENT_DIR:-/home/podles/.pi/agent}"
 LIVE_ROOT="${PODLE_TOOLS_LIVE_ROOT:-/home/podles/.local/share/podle-tools/clipboard-images}"
 LIVE_EXT="${LIVE_ROOT}/pi-extension"
-SYMLINK="${PI_EXTENSIONS_DIR:-/home/podles/.pi/agent/extensions}/paste-linker"
+SYMLINK="${PI_EXTENSIONS_DIR:-${PI_AGENT_DIR}/extensions}/paste-linker"
+KEYBINDINGS_FILE="${PI_KEYBINDINGS_FILE:-${PI_AGENT_DIR}/keybindings.json}"
 BACKUP_ROOT="${BACKUP_ROOT:-/home/podles/backups/pi-owned-screenshot-extension}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP="${BACKUP_ROOT}/${STAMP}"
@@ -19,6 +23,10 @@ SRC_CAPTURE_PY="${ROOT}/paste_capture.py"
 
 if [[ ! -f "${SRC}/index.ts" || ! -f "${SRC}/capture.ts" ]]; then
   echo "install-pi-extension: missing source at ${SRC}" >&2
+  exit 1
+fi
+if [[ ! -f "${KEYBINDINGS_HELPER}" ]]; then
+  echo "install-pi-extension: missing keybinding helper at ${KEYBINDINGS_HELPER}" >&2
   exit 1
 fi
 
@@ -56,6 +64,11 @@ if [[ -f "${WRAPPER}" ]]; then
 fi
 
 mkdir -p "${BACKUP}/originals" "${BACKUP}/live" "${LIVE_EXT}"
+if [[ -e "${KEYBINDINGS_FILE}" ]]; then
+  KEYBINDINGS_EXISTED=1
+else
+  KEYBINDINGS_EXISTED=0
+fi
 cp -a "${SYMLINK}" "${BACKUP}/originals/paste-linker.symlink"
 printf '%s\n' "${current_target}" > "${BACKUP}/originals/paste-linker.symlink-target"
 if [[ -e "${resolved_target}" ]]; then
@@ -72,9 +85,9 @@ if [[ -f "${LIVE_CAPTURE_PY}" ]]; then
   mkdir -p "${BACKUP}/originals/paste-linker-tools"
   cp -a "${LIVE_CAPTURE_PY}" "${BACKUP}/originals/paste-linker-tools/paste_capture.py"
 fi
-cp -a /home/podles/.pi/agent/settings.json "${BACKUP}/originals/settings.json" 2>/dev/null || true
-cp -a /home/podles/.pi/agent/keybindings.json "${BACKUP}/originals/keybindings.json" 2>/dev/null || true
-ls -la /home/podles/.pi/agent/extensions > "${BACKUP}/originals/extensions-listing.txt"
+cp -a "${PI_AGENT_DIR}/settings.json" "${BACKUP}/originals/settings.json" 2>/dev/null || true
+cp -a "${KEYBINDINGS_FILE}" "${BACKUP}/originals/keybindings.json" 2>/dev/null || true
+ls -la "$(dirname "${SYMLINK}")" > "${BACKUP}/originals/extensions-listing.txt"
 
 # Copy extension source into the live Tools-owned directory.
 rsync -a --delete \
@@ -86,6 +99,10 @@ rsync -a --delete \
 if [[ -f "${SRC_CAPTURE_PY}" && -f "${LIVE_CAPTURE_PY}" ]]; then
   cp -a "${SRC_CAPTURE_PY}" "${LIVE_CAPTURE_PY}"
 fi
+
+# Give paste-linker sole ownership of Alt+V using Pi's supported user
+# keybinding override. This removes the startup conflict rather than hiding it.
+python3 "${KEYBINDINGS_HELPER}" "${KEYBINDINGS_FILE}"
 
 # Atomically replace only the paste-linker symlink.
 tmp_link="$(mktemp -p "$(dirname "${SYMLINK}")" .paste-linker.XXXXXX)"
@@ -103,6 +120,8 @@ mv -Tf "${tmp_link}" "${SYMLINK}"
   echo "index_sha256=$(sha256sum "${LIVE_EXT}/index.ts" | awk '{print $1}')"
   echo "capture_ts_sha256=$(sha256sum "${LIVE_EXT}/capture.ts" | awk '{print $1}')"
   echo "paste_capture_py_sha256=$(sha256sum "${LIVE_CAPTURE_PY}" 2>/dev/null | awk '{print $1}')"
+  echo "keybindings=${KEYBINDINGS_FILE} (app.clipboard.pasteImage disabled; paste-linker owns Alt+V)"
+  echo "keybindings_existed=${KEYBINDINGS_EXISTED}"
   echo "reload=not performed; ready for coordinated user /reload"
 } | tee "${BACKUP}/manifest.txt"
 
@@ -115,11 +134,17 @@ ln -sfn $(printf '%q' "${current_target}") $(printf '%q' "${SYMLINK}")
 if [[ -f $(printf '%q' "${BACKUP}/originals/paste-linker-tools/paste_capture.py") ]]; then
   cp -a $(printf '%q' "${BACKUP}/originals/paste-linker-tools/paste_capture.py") $(printf '%q' "${LIVE_CAPTURE_PY}")
 fi
-echo "restored ${SYMLINK} -> ${current_target}"
+if [[ "${KEYBINDINGS_EXISTED}" == 1 ]]; then
+  cp -a $(printf '%q' "${BACKUP}/originals/keybindings.json") $(printf '%q' "${KEYBINDINGS_FILE}")
+else
+  rm -f $(printf '%q' "${KEYBINDINGS_FILE}")
+fi
+echo "restored ${SYMLINK} -> ${current_target} and Pi keybindings"
 EOF
 chmod +x "${BACKUP}/rollback.sh"
 
 echo "installed ${SYMLINK} -> ${LIVE_EXT}"
 echo "backup ${BACKUP}"
 echo "paste-capture wrapper not modified"
+echo "Pi keybindings updated through ${KEYBINDINGS_FILE}"
 echo "do not /reload from this installer"
