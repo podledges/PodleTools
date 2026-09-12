@@ -1,0 +1,30 @@
+name: Pi footer
+
+on:
+  pull_request:
+    paths:
+      - "package.json"
+      - "PiFooter/**"
+      - ".github/workflows/pi-footer.yml"
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "PiFooter/**"
+      - ".github/workflows/pi-footer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --ignore-scripts
+      - run: npm test
+      - run: npm pack --dry-run
