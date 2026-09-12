@@ -18,6 +18,7 @@ import test from "node:test";
 import {
   DefaultResourceLoader,
   SettingsManager,
+  discoverAndLoadExtensions,
 } from "@earendil-works/pi-coding-agent";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -110,7 +111,7 @@ test("Pi resource loader discovers one package extension and both commands", asy
   assert.deepEqual([...loaded.extensions[0].commands.keys()].sort(), ["sgd-rate", "sgd-rate-refresh"]);
 });
 
-test("packed contents are minimal and helpers work after relocation", t => {
+test("packed contents are minimal and helpers work after relocation", async t => {
   const dir = temp(t, "pi-footer-pack-");
   const result = JSON.parse(execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", dir], {
     cwd: root,
@@ -133,11 +134,17 @@ test("packed contents are minimal and helpers work after relocation", t => {
 
   execFileSync("tar", ["-xzf", join(dir, result[0].filename), "-C", dir]);
   const relocated = join(dir, "package");
-  execFileSync("npm", ["install", "--omit=dev", "--ignore-scripts", "--offline"], {
-    cwd: relocated,
-    encoding: "utf8",
-  });
-  assert.equal(existsSync(join(relocated, "node_modules/@earendil-works/pi-coding-agent")), false);
+  // A package consumer gets Pi core from the host via peerDependencies. Running
+  // npm install inside this unpacked source would resolve devDependencies and
+  // accidentally make this assertion depend on the caller's npm cache.
+  assert.equal(existsSync(join(relocated, "node_modules")), false);
+  const relocatedFooter = join(relocated, footerRelative);
+  const loaded = await discoverAndLoadExtensions([relocatedFooter], relocated, join(dir, "agent"));
+  assert.deepEqual(loaded.errors, []);
+  assert.equal(loaded.extensions.length, 1);
+  assert.equal(loaded.extensions[0].path, relocatedFooter);
+  assert.deepEqual([...loaded.extensions[0].commands.keys()].sort(), ["sgd-rate", "sgd-rate-refresh"]);
+  assert.equal(existsSync(join(relocated, "node_modules")), false);
   const help = execFileSync(join(relocated, "PiFooter/bin/pi-sgd-rate-refresh"), ["--help"], {
     env: { ...process.env, PI_SGD_RATE_CACHE: join(dir, "elsewhere/rate.json") },
     encoding: "utf8",
