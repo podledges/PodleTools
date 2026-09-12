@@ -5,6 +5,8 @@ PodleChrome/profiles/
 PodleChrome/user-data/
 
 docs/
+node_modules/
+.test-tmp/
 
 __pycache__/
 *.pyc

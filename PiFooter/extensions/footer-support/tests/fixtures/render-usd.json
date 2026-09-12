@@ -1,0 +1,27 @@
+{
+  "10": [
+    "\u001b[2m/fixtur\u001b[0m\u001b[2m...\u001b[22m\u001b[0m",
+    "\u001b[38;2;156;110;79mᏊ •ﻌ•Ꮚ\u001b[39m \u001b[0m...\u001b[0m",
+    "status \u001b[0m\u001b[2m...\u001b[22m\u001b[0m"
+  ],
+  "40": [
+    "\u001b[2m/fixture/project (branch) • Test session\u001b[22m",
+    "\u001b[38;2;156;110;79mᏊ •ﻌ•Ꮚ\u001b[39m   \u001b[38;2;114;179;171m12k / 200k\u001b[39m   \u001b[38;2;177;110;223m[$1.754]\u001b[39m  \u001b[38;2;156;110;79mᏊ •ﻌ•\u001b[0m...\u001b[0m",
+    "status text Telegram connected"
+  ],
+  "80": [
+    "\u001b[2m/fixture/project (branch) • Test session\u001b[22m",
+    "\u001b[38;2;156;110;79mᏊ •ﻌ•Ꮚ\u001b[39m   \u001b[38;2;114;179;171m12k / 200k\u001b[39m   \u001b[38;2;177;110;223m[$1.754]\u001b[39m  \u001b[38;2;156;110;79mᏊ •ﻌ•Ꮚ\u001b[39m   \u001b[38;2;147;147;186mR:400 W:50 CH:72.7%\u001b[39m   \u001b[38;2;106;188;190mgpt:55%\u001b[39m  \u001b[38;2;58;134;255mgrk:72%\u001b[39m",
+    "status text Telegram connected"
+  ],
+  "120": [
+    "\u001b[2m/fixture/project (branch) • Test session\u001b[22m",
+    "\u001b[38;2;156;110;79mᏊ •ﻌ•Ꮚ\u001b[39m   \u001b[38;2;114;179;171m12k / 200k\u001b[39m   \u001b[38;2;177;110;223m[$1.754]\u001b[39m  \u001b[38;2;156;110;79mᏊ •ﻌ•Ꮚ\u001b[39m   \u001b[38;2;147;147;186mR:400 W:50 CH:72.7%\u001b[39m   \u001b[38;2;106;188;190mgpt:55%\u001b[39m  \u001b[38;2;58;134;255mgrk:72%\u001b[39m                       \u001b[38;2;50;122;122mgpt-6-astra • high\u001b[39m",
+    "status text Telegram connected"
+  ],
+  "200": [
+    "\u001b[2m/fixture/project (branch) • Test session\u001b[22m",
+    "\u001b[38;2;156;110;79mᏊ •ﻌ•Ꮚ\u001b[39m   \u001b[38;2;114;179;171m12k / 200k\u001b[39m   \u001b[38;2;177;110;223m[$1.754]\u001b[39m  \u001b[38;2;156;110;79mᏊ •ﻌ•Ꮚ\u001b[39m   \u001b[38;2;147;147;186mR:400 W:50 CH:72.7%\u001b[39m   \u001b[38;2;106;188;190mgpt:55%\u001b[39m  \u001b[38;2;58;134;255mgrk:72%\u001b[39m                                                                                                       \u001b[38;2;50;122;122mgpt-6-astra • high\u001b[39m",
+    "status text Telegram connected"
+  ]
+}

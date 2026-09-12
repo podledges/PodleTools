@@ -1,0 +1,48 @@
+{
+  "name": "@podledges/podletools-pi-footer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The supported PodleTools custom two-row footer extension for Pi",
+  "license": "UNLICENSED",
+  "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "files": [
+    "PiFooter/README.md",
+    "PiFooter/NOTICE.md",
+    "PiFooter/bin/",
+    "PiFooter/extensions/"
+  ],
+  "bin": {
+    "pi-sgd-rate-refresh": "PiFooter/bin/pi-sgd-rate-refresh"
+  },
+  "scripts": {
+    "test:pi-footer": "mkdir -p .test-tmp && TMPDIR=\"$PWD/.test-tmp\" node --test --test-concurrency=1 PiFooter/extensions/footer-support/tests/*test.* PiFooter/tests/*test.mjs",
+    "test": "npm run test:pi-footer"
+  },
+  "pi": {
+    "extensions": [
+      "./PiFooter/extensions/firstmate-footer-colors.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@earendil-works/pi-tui": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@earendil-works/pi-tui": "0.85.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
