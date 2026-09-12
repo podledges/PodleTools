@@ -30,6 +30,7 @@ export async function renderHarness(t: any, source: string, options: {
   quota?: unknown;
   calm?: boolean;
   telegramStatus?: string;
+  adhdMarker?: string;
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "footer-render-"));
   const old = {
@@ -44,9 +45,12 @@ export async function renderHarness(t: any, source: string, options: {
   process.env.FM_CONFIG_OVERRIDE = join(dir, "firstmate-config");
   delete process.env.FM_HOME;
   delete process.env.FM_ROOT_OVERRIDE;
+  const projectCwd = join(dir, "project");
   mkdirSync(join(dir, ".cache"));
   mkdirSync(process.env.FM_CONFIG_OVERRIDE);
+  mkdirSync(join(projectCwd, "config"), { recursive: true });
   writeFileSync(join(process.env.FM_CONFIG_OVERRIDE, "calm"), options.calm === false ? "off\n" : "on\n");
+  if (options.adhdMarker !== undefined) writeFileSync(join(projectCwd, "config", "adhd"), options.adhdMarker);
   writeFileSync(join(dir, ".cache/pi-fleet-quota.json"), JSON.stringify(options.quota ?? defaultQuota));
   if (options.withRate !== false) {
     writeFileSync(process.env.PI_SGD_RATE_CACHE, JSON.stringify({
@@ -83,7 +87,7 @@ export async function renderHarness(t: any, source: string, options: {
   const original = structuredClone(entries);
   const ctx: any = {
     hasUI: true,
-    cwd: "/fixture/project",
+    cwd: projectCwd,
     model: { id: "gpt-6-astra", reasoning: true, contextWindow: 200000 },
     thinkingLevel: "high",
     sessionManager: { getEntries: () => sessionEntries, getBranch: () => sessionEntries, getSessionName: () => "Test session" },
@@ -146,6 +150,21 @@ test("two-line layout keeps exact colors, sheep spacing, display widths, and rig
   assert.equal(plain(h.footer.render(40)[1]), "adhd ×   calm ✔   telegram ✔");
   assert.deepEqual(h.sessionEntries, h.original);
   assert.equal(h.fetchCalls(), 0);
+});
+
+test("scoped ADHD marker starts enabled and latest session toggles win across reloads", async t => {
+  const h = await renderHarness(t, source, { adhdMarker: " ON\n" });
+  assert.match(plain(h.footer.render(120)[1]), /^adhd ✔/);
+
+  await h.emit("input", { text: "normal mode" });
+  await h.emit("session_shutdown");
+  await h.emit("session_start");
+  assert.match(plain(h.footer.render(120)[1]), /^adhd ×/);
+
+  await h.emit("input", { text: "/i-have-adhd" });
+  await h.emit("session_shutdown");
+  await h.emit("session_start");
+  assert.match(plain(h.footer.render(120)[1]), /^adhd ✔/);
 });
 
 test("adhd, calm, and Telegram indicators follow their real state transitions", async t => {
