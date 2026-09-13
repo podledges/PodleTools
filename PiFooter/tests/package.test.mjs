@@ -124,6 +124,7 @@ test("packed contents are minimal and helpers work after relocation", async t =>
     "PiFooter/NOTICE.md",
     "PiFooter/README.md",
     footerRelative,
+    "PiFooter/extensions/footer-support/adhd-state.mjs",
     "PiFooter/extensions/footer-support/sgd-rate.mjs",
     "PiFooter/extensions/footer-support/refresh.mjs",
     "PiFooter/extensions/footer-support/quota-refresh.mjs",

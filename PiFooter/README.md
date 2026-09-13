@@ -35,13 +35,19 @@ right-aligned current Pi model/effective thinking level. The second always
 contains `adhd`, `calm`, and `telegram`. Enabled labels are `#FF00FF` and enabled
 `✔` glyphs are `#CCFF00`; disabled/disconnected labels and `×` are dim.
 
-Model and effort come from Pi runtime state. ADHD follows `/i-have-adhd`,
-`/skill:i-have-adhd`, `stop adhd mode`, and `normal mode`, persisted in a
-non-context session entry. Calm reads `config/calm` using `FM_CONFIG_OVERRIDE`,
-then `FM_HOME`, then `FM_ROOT_OVERRIDE`, then the Pi working directory. Telegram
-uses the live `telegram` extension status. No package/config presence is treated
-as a connection. There are no timers, reboot schedules, model choices, auth
-copies, or host-setting changes.
+Model and effort come from Pi runtime state. A project opts into the ADHD footer
+startup state with `config/adhd` under that session's initial working directory;
+after trimming and case normalization, only exact `on` enables it. Missing,
+unreadable, empty, or other content starts disabled, so unrelated projects do not
+inherit the opt-in. The latest explicit `/i-have-adhd`, `/skill:i-have-adhd`,
+`stop adhd mode`, or `normal mode` toggle in the session branch overrides that
+default across reload/resume. This marker controls only the footer indicator;
+the Firstmate home's own startup instructions control actual response style.
+Calm reads `config/calm` using `FM_CONFIG_OVERRIDE`, then `FM_HOME`, then
+`FM_ROOT_OVERRIDE`, then the Pi working directory. Telegram uses the live
+`telegram` extension status. No package/config presence is treated as a
+connection. There are no timers, reboot schedules, model choices, auth copies,
+or host-setting changes.
 
 ## Required legacy preflight and migration
 
@@ -212,11 +218,11 @@ npm test
 npm pack --dry-run
 ```
 
-Tests use fake/offline currency, provider, Calm, and Telegram inputs. They cover
-two rows, narrow widths, colors, live model/effort updates, feature transitions,
-unknown/error/zero quota and currency, package manifest selection, relocation,
-native disposable-home install/discovery/removal, coexistence, and legacy
-conflicts. The render harness is an isolated proof, not evidence that the current
+Tests use fake/offline currency, provider, ADHD, Calm, and Telegram inputs. They
+cover two rows, narrow widths, colors, live model/effort updates, feature
+transitions, unknown/error/zero quota and currency, package manifest selection,
+relocation, native disposable-home install/discovery/removal, coexistence, and
+legacy conflicts. The render harness is an isolated proof, not evidence that the current
 primary rendered or activated this footer. No test copies auth, infers a model,
 or bypasses ordinary extension discovery when testing a broken readable legacy
 entry.

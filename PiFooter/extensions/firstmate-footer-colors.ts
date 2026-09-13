@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { ADHD_STATE_ENTRY, readAdhdStartupDefault, replayAdhdSessionState } from "./footer-support/adhd-state.mjs";
 import { formatSgdCost, readRateCache, refreshRate, needsRefresh } from "./footer-support/sgd-rate.mjs";
 
 const contextColor = (text: string) => `\x1b[38;2;114;179;171m${text}\x1b[39m`;
@@ -19,7 +20,6 @@ const grokColor = (text: string) => `\x1b[38;2;58;134;255m${text}\x1b[39m`;
 const featureLabelColor = (text: string) => `\x1b[38;2;255;0;255m${text}\x1b[39m`;
 const enabledColor = (text: string) => `\x1b[38;2;204;255;0m${text}\x1b[39m`;
 const SHEEP = "Ꮚ •ﻌ•Ꮚ";
-const ADHD_STATE_ENTRY = "firstmate-footer-adhd-state";
 
 // Codex/Grok quota runway via quota-axi, cache-first so render never blocks.
 // Mirrors the Windows-side herdr-fleet-ui fleet-quota.js: read the cache,
@@ -206,13 +206,9 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", (_event, ctx) => {
     alive = true;
     rate = readRateCache() ?? rate;
-    adhdEnabled = false;
+    const startupDefault = readAdhdStartupDefault(ctx.cwd);
     const stateEntries = (ctx.sessionManager as any).getBranch?.() ?? ctx.sessionManager.getEntries();
-    for (const entry of stateEntries) {
-      if ((entry as any).type === "custom" && (entry as any).customType === ADHD_STATE_ENTRY) {
-        adhdEnabled = (entry as any).data?.enabled === true;
-      }
-    }
+    adhdEnabled = replayAdhdSessionState(startupDefault, stateEntries);
     // Bootstrap/refresh on startup, never on footer render. Render uses memory only.
     if (needsRefresh(rate)) void refresh(ctx);
     ctx.ui.setFooter((tui, theme, footerData) => {
