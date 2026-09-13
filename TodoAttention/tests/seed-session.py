@@ -6,10 +6,10 @@ from pathlib import Path
 
 path = Path(sys.argv[1])
 tasks = [
-    {"id": 1, "subject": "Yellow waiting", "status": "pending", "metadata": {"attention": "waiting", "attentionReason": "awaiting CI"}},
+    {"id": 1, "subject": "Gray waiting", "status": "pending", "metadata": {"attention": "waiting", "attentionReason": "awaiting CI"}},
     {"id": 2, "subject": "Verified active", "status": "in_progress", "activeForm": "running isolated smoke", "metadata": {"attention": "agent-working"}},
     {"id": 3, "subject": "Captain decision", "status": "pending", "metadata": {"attention": "captain-input", "attentionReason": "approve deployment"}},
-    {"id": 4, "subject": "Blocked is yellow", "status": "in_progress", "blockedBy": [1], "metadata": {"attention": "agent-working"}},
+    {"id": 4, "subject": "Blocked is gray", "status": "in_progress", "blockedBy": [1], "metadata": {"attention": "agent-working"}},
     {"id": 5, "subject": "Completed keeps completion style", "status": "completed"},
     {"id": 6, "subject": "Deleted stays deleted", "status": "deleted"},
 ]

@@ -16,15 +16,18 @@ always-visible ids remain unchanged, apart from these indicator/subtitle changes
 
 | Structured state | Indicator |
 | --- | --- |
-| `metadata.attention="captain-input"` | Static `●`, same `accent` token as the Todos title |
-| `status="in_progress"`, `metadata.attention="agent-working"`, no `blockedBy` | Blue `#0066FF` spinner, `⠋ ⠙ ⠹ ⠸ ⠼ ⠴` |
-| Waiting, pending, blocked, stale, missing, or unknown attention | Static yellow `#FFFF00` `●` |
+| `metadata.attention="captain-input"` | Static orange `#FF9800` `●` (`needs you`) |
+| `status="in_progress"`, `metadata.attention="agent-working"`, no `blockedBy` | Green `#00E676` spinner, `⠋ ⠙ ⠹ ⠸ ⠼ ⠴` (`working`) |
+| Waiting, pending, blocked, stale, missing, or unknown attention | Static neutral gray `#B0B0B0` `●` (`waiting`) |
 | Completed | Static `✓`, theme `success`, no outstanding attention dot |
 | Deleted | Existing deletion presentation; hidden from overlay, never completion |
 
-Captain input takes precedence over animation, including blocked tasks.
-Animation runs only in the **live widget**, not historical tool results or
-`/todos` notifications (these retain static blue dots). One widget-local timer
+Captain input takes precedence over animation, including blocked tasks. A
+compact, visible `working · waiting · needs you` legend uses the same colored
+dots in the overlay, `/todos`, and list tool results, so meaning is not
+color-only. Mutation-only responses remain compact. Animation runs only in the
+**live widget**, not historical tool results or `/todos` notifications (these
+retain static green dots). One widget-local timer
 advances all displayed active indicators every **150 ms (6⅔ frames/sec)**.
 It requests normal, coalesced/differential TUI renders, never forced full
 redraws, model calls, token usage, session writes, or task mutations.
@@ -35,12 +38,12 @@ resources; deferred overlay prewarming is also session-scoped and cleaned up.
 
 ### Caller responsibility (not worker auto-binding)
 
-Blue requires an explicit `agent-working` assertion as well as `in_progress`.
+Green requires an explicit `agent-working` assertion as well as `in_progress`.
 There is **no automatic worker-liveness binding**, fleet controller, endpoint
 probe, or elapsed-time activity inference. A persisted explicit assertion is
 trusted on replay, so it can be wrong if a caller fails to clear it after an
-interruption. A stale `in_progress` status *without* that assertion stays yellow;
-explicit `attention="stale"` also stays yellow.
+interruption. A stale `in_progress` status *without* that assertion stays gray;
+explicit `attention="stale"` also stays gray.
 
 - Before pausing, blocking, or handing back, set `attention` to `waiting` and
   supply `metadata.attentionReason`, for example `waiting for worker test
@@ -62,19 +65,18 @@ persistence envelopes are unchanged.
 
 ### Exact colour sources
 
-Read-only inspection of the installed theme
-`/home/podles/.pi/agent/themes/neon-afterglow.json` established:
+The outstanding-task palette uses fixed truecolour values selected for high
+contrast on the supported neon-afterglow dark background (`#06040F`):
 
-- `colors.accent` → `vars.hotPink` → **`#FF00CC`** (RGB `255;0;204`). The existing
-  `todo-overlay.ts` heading uses `accent`; input dots use that very same token.
-- `colors.success` → `vars.acidLime` → **`#CCFF00`** (RGB `204;255;0`). The installed
-  `@llblab/pi-telegram/lib/status.ts`, `buildTelegramStatusBarText`, renders
-  `connected` through `theme.fg("success", "connected")`. Completed checks use
-  the same token, not a green emoji or a guessed hex.
+- verified agent work: green **`#00E676`** (RGB `0;230;118`)
+- waiting/blocked/stale/unknown: neutral gray **`#B0B0B0`** (RGB `176;176;176`)
+- captain input: orange **`#FF9800`** (RGB `255;152;0`)
 
-Neither the theme nor Telegram bridge is modified or a runtime dependency.
-Token-bound colours follow later theme changes. Blue and yellow intentionally
-use exact RGB; exact theme ANSI assertions require neon-afterglow/truecolour.
+There is no fallback to the former blue/yellow/theme-accent mapping. The heading
+still uses its existing theme accent. Completed checks still use the theme
+`success` token (`#CCFF00` in neon-afterglow), not an attention color. Neither
+the theme nor Telegram bridge is modified or a runtime dependency. Exact ANSI
+assertions require neon-afterglow/truecolour.
 
 ### Static / reduced-motion fallback
 
@@ -89,7 +91,7 @@ Location: `$XDG_CONFIG_HOME/rpiv-todo/config.json` (absolute XDG path), otherwis
 `~/.config/rpiv-todo/config.json`, with upstream's legacy fallback rules. Merge
 this field into existing configuration rather than replacing other settings.
 Only boolean `true` enables the fallback: the active indicator becomes a static
-blue `●` and allocates no animation timer. Changes are read on repaint/tick;
+green `●` and allocates no animation timer. Changes are read on repaint/tick;
 re-enabling animation takes effect on the next ordinary repaint, without a file
 watcher. All indicators/frames are one terminal cell according to Pi's Unicode
 width utility. Terminals still need fonts that support those Unicode glyphs.
@@ -109,9 +111,9 @@ The baseline is the installed package at
 
 `prepare.py` checks package identity and SHA-256 of **every changed upstream
 file**, including maintained upstream documentation, before `git apply`. Drift
-fails closed. The main patch builds attention-v2; the immutable
-`patches/rpiv-todo-2.9.0-attention-v1.patch` verifies existing v1 installations
-for safe upgrade and rollback. No second store or cross-PodleTools dependency.
+fails closed. The main patch builds attention-v3; immutable v1 and v2 patches
+verify older managed installations for safe chained upgrade and rollback. No
+second store or cross-PodleTools dependency.
 
 ## Verify
 
@@ -132,9 +134,9 @@ shutdown reason, child-session isolation, normalization and state preservation.
 No model/session is created by SDK contracts. Fake-clock measurement is exactly
 **40 non-forced redraw requests / 6000 ms**, with zero task-store writes.
 
-Installer tests exercise fresh installation, Pi package discovery, existing-v1
-upgrade, idempotence, compatibility drift, injected manifest-write failure,
-rollback to v1 and then npm, preservation of unrelated settings/package filters,
+Installer tests exercise fresh installation, Pi package discovery, chained
+v1→v2→v3 upgrade, idempotence, compatibility drift, injected manifest-write
+failure, rollback through v2 and v1 to npm, preservation of unrelated settings/package filters,
 and untouched session bytes. The real isolated TUI replays **synthetic** task
 history through the actual owner (no helper-owned widget) and captures ANSI and
 real timer cadence. `smoke-test.sh` separately checks animated and static modes.
@@ -170,9 +172,10 @@ filters and unrelated settings. No runtime dependency on a disposable checkout.
 ```
 
 The managed release is
-`$PI_CODING_AGENT_DIR/todoattention/releases/rpiv-todo-2.9.0-attention-v2`.
-Upgrading the established v1 deployment verifies its manifest and legacy patch,
-retains its package bytes, stages v2, and replaces only the configured source.
+`$PI_CODING_AGENT_DIR/todoattention/releases/rpiv-todo-2.9.0-attention-v3`.
+Upgrading an established v1 or v2 deployment verifies its manifest and immutable
+release patch, retains its package bytes, stages v3, and replaces only the
+configured source.
 A failed settings/manifest publication restores the old configuration. Do not
 remove/reinstall packages manually or register both versions simultaneously.
 
@@ -189,11 +192,12 @@ TodoAttention/install.py rollback --dry-run
 TodoAttention/install.py rollback
 ```
 
-For a v1→v2 upgrade, rollback restores the retained v1 source and its original
-manifest, removes v2, and preserves unrelated settings changed since upgrade.
-A second deliberate rollback restores npm. For a fresh v2 install, one rollback
-restores npm. The new installer also supports direct rollback of verified v1.
-Both versions' compatibility checks remain enabled; malformed manifests,
+For an older-release upgrade, each rollback restores the immediately preceding
+retained source and manifest, removes the newer release, and preserves unrelated
+settings changed since upgrade. Thus v1→v2→v3 rolls back v3→v2→v1→npm in three
+deliberate calls. A fresh v3 install needs one rollback. Direct rollback of
+verified v1 and v2 remains supported. All versions' compatibility checks remain
+enabled; malformed manifests,
 competing configured sources, or changed patches fail closed. Session/task
 files are never migrated or rewritten. Settings backups live under
 `$PI_CODING_AGENT_DIR/todoattention/backups/`. Rollback does not reload Pi;
