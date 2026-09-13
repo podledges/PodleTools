@@ -12,16 +12,20 @@ static = len(sys.argv) > 3 and sys.argv[3] == "static"
 def ansi(rgb, text):
     return f"\x1b[38;2;{rgb}m{text}\x1b[39m".encode()
 
-pink = ansi("255;0;204", "●")
-yellow = ansi("255;255;0", "●")
-blue = ansi("0;102;255", "●" if static else "⠋")
-for task_id, color in [(b"#1", yellow), (b"#2", blue), (b"#3", pink), (b"#4", yellow)]:
+orange = ansi("255;152;0", "●")
+gray = ansi("176;176;176", "●")
+green = ansi("0;230;118", "●" if static else "⠋")
+for task_id, color in [(b"#1", gray), (b"#2", green), (b"#3", orange), (b"#4", gray)]:
     assert task_id + b"\x1b[39m " + color in raw, f"missing indicator beside {task_id!r}"
-assert pink + b" " + ansi("255;0;204", "Todos (1/5)") in raw, "input dot must match actual title ANSI"
+assert ansi("255;0;204", "● Todos (1/5)") in raw, "exact heading text and glyph must remain unchanged"
+for color, label in [("0;230;118", "working"), ("176;176;176", "waiting"), ("255;152;0", "needs you")]:
+    assert ansi(color, "●") + b" " + label.encode() in raw, f"missing labeled legend entry {label}"
 assert ansi("204;255;0", "✓") + b" " + ansi("71;58;114", "#5") in raw, "completion must use exact connected lime ANSI"
 text = re.sub(rb"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))", b"", raw).decode()
-for reason in ["(awaiting CI)", "(approve deployment)", "(blocked by dependency #1)"]:
+for reason in ["(awaiting CI)", "└─ needs you: approve deployment", "(blocked by dependency #1)"]:
     assert reason in text, f"missing concrete reason {reason}"
+captain_row = next(line for line in text.splitlines() if "Captain decision" in line)
+assert "needs you:" not in captain_row, "captain decision must not render inline"
 assert "#5 ● Completed" not in text
 assert "Deleted stays deleted" not in text
 if static:
@@ -30,7 +34,7 @@ if static:
     print("isolated Pi TUI static fallback: 0 animation timers/redraws; ANSI contract ok")
 else:
     for frame in "⠋⠙⠹⠸⠼⠴":
-        assert ansi("0;102;255", frame) in raw, f"missing real spinner frame {frame}"
+        assert ansi("0;230;118", frame) in raw, f"missing real spinner frame {frame}"
     assert cadence["animationTimers"] == 1, cadence
     ticks = cadence["ticks"]
     assert 6 <= len(ticks) <= 15, cadence

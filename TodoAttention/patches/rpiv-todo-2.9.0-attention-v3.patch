@@ -1,8 +1,8 @@
 diff --git a/README.md b/README.md
-index e1ad737..1442e9b 100644
+index e1ad737..121f6dd 100644
 --- a/README.md
 +++ b/README.md
-@@ -57,6 +57,16 @@ by status.
+@@ -57,6 +57,14 @@ by status.
  - **The overlay never eats your terminal.** Past the row budget it drops
    completed tasks first, truncates unfinished ones last, and tells you what it
    hid with `+3 more (2 completed, 1 pending)`.
@@ -10,11 +10,9 @@ index e1ad737..1442e9b 100644
 +  renderer-owned indicator: neutral gray `●` (`#B0B0B0`) for waiting/unknown,
 +  green spinner (`#00E676`, 150 ms/frame) only for explicit live active work,
 +  and a static orange dot (`#FF9800`) for captain input. A compact labeled key
-+  (`working`, `waiting`, `needs you`) appears with Todo lists. Every orange task
-+  puts its required, terminal-sanitized decision context on an indented
-+  `└─ needs you: …` line; newly setting captain input requires an
-+  `attentionReason` of at most 160 Unicode characters. Completed uses `success`
-+  `✓`. Waiting subtitles expose a caller reason or honest unknown fallback. See
++  (`working`, `waiting`, `needs you`) appears with Todo lists. Completed uses
++  `success` `✓`.
++  Waiting subtitles expose a caller reason or honest unknown fallback. See
 +  [Overlay and `/todos`](docs/overlay.md) for metadata and transition rules.
  - **The agent can sequence work, not just list it.** `blockedBy` dependencies are
    validated before anything is written — dangling ids, deleted dependencies,
@@ -65,10 +63,10 @@ index 8174da5..e15607f 100644
  
  **Default `"ctrl+shift+t"`.** The shortcut that collapses and expands the
 diff --git a/docs/overlay.md b/docs/overlay.md
-index 81c2b31..18b2052 100644
+index 81c2b31..fa399ce 100644
 --- a/docs/overlay.md
 +++ b/docs/overlay.md
-@@ -26,28 +26,57 @@ and taking the last `todo` tool result's snapshot, which replaces the whole list
+@@ -26,24 +26,44 @@ and taking the last `todo` tool result's snapshot, which replaces the whole list
  
  ```
  ● Todos (2/5)
@@ -79,8 +77,7 @@ index 81c2b31..18b2052 100644
 -└─ ○ Add integration tests
 +├─ ✓ #1 Create DemoTodo domain entity
 +├─ ✓ #2 Create IDemoTodoRepository interface
-+├─ ◐ #3 ● Create DemoTodoRepository
-+  └─ needs you: choose SQLite or Postgres
++├─ ◐ #3 ● Create DemoTodoRepository (creating the repository)
 +├─ ○ #4 ● Register DI bindings
 +└─ ○ #5 ● Add integration tests
  ```
@@ -106,17 +103,11 @@ index 81c2b31..18b2052 100644
 +  terminal states.
 +- **Attention key** — a compact visible legend labels the same dots `working`,
 +  `waiting`, and `needs you`, so the state is not communicated by color alone.
-+- **Subtitle** — active work keeps `activeForm`; waiting uses
++- **Subtitle** — active work keeps `activeForm`. Waiting/input uses
 +  `metadata.attentionReason`, then an explicit dependency or legacy actionable
-+  waiting/failure label. Every orange task has an immediately following,
-+  indented `└─ needs you: <specific decision>` line instead of inline context.
-+  The semantic label is orange while decision text remains readable. ANSI-aware
-+  wrapping keeps continuation lines aligned. Newly set `captain-input` requires
-+  a non-empty, terminal-sanitized `attentionReason` of at most 160 Unicode
-+  characters. Historical missing/invalid context falls back to safe existing
-+  task text and says that context is missing/invalid. Missing waiting reasons
-+  honestly say `pending; reason unknown` or `waiting; activity unconfirmed`;
-+  bare `supervising` is not a reason. No failure is inferred from waiting.
++  waiting/failure label. Missing reasons honestly say `pending; reason unknown`
++  or `waiting; activity unconfirmed`; bare `supervising` is not a reason.
++  Reasons are sanitized for terminal safety. No failure is inferred from waiting.
 +- **Motion** — one widget-local timer, only for displayed active indicators;
 +  hidden/collapsed or too-narrow rows do not tick. Completion/removal/no active
 +  work, widget disposal, and session shutdown (including reload/switch) stop it.
@@ -132,14 +123,7 @@ index 81c2b31..18b2052 100644
  - **Prefixes** — `├─` on each row, `└─` on the last one. A blank spacer line is
    always appended below the panel so it is not flush against the input box.
  
--Rows longer than the terminal width are truncated with `…`.
-+Main rows longer than the terminal width are truncated with `…`. Captain
-+context wraps beneath its `└─` marker and every continuation retains the same
-+ANSI-visible indentation.
- 
- ## Overflow
- 
-@@ -93,12 +122,12 @@ row budget and auto-hiding:
+@@ -93,12 +113,12 @@ row budget and auto-hiding:
  ```
  2/7 completed · 1 in progress · 4 pending
  ── Pending ──
@@ -158,10 +142,10 @@ index 81c2b31..18b2052 100644
    ✓ #1 Create DemoTodo domain entity
    ✓ #2 Create IDemoTodoRepository interface
 diff --git a/docs/tool-schema.md b/docs/tool-schema.md
-index bc82d03..8092f42 100644
+index bc82d03..bf35014 100644
 --- a/docs/tool-schema.md
 +++ b/docs/tool-schema.md
-@@ -51,6 +51,53 @@ for a key removes it, and emptying the record drops the field entirely.
+@@ -51,6 +51,42 @@ for a key removes it, and emptying the record drops the field entirely.
  `addBlockedBy` and `removeBlockedBy` are additive — do not resend the whole
  array.
  
@@ -169,12 +153,8 @@ index bc82d03..8092f42 100644
 +
 +Renderers classify outstanding tasks from structured state, never title text:
 +
-+- `metadata.attention="captain-input"` requests a real captain decision or
-+  required fact and renders orange `#FF9800`. The same create/update mutation
-+  must provide a non-empty `metadata.attentionReason` of at most 160 Unicode
-+  characters that says exactly what to decide or provide, for example
-+  `choose merge or hold PR 24`. Input is terminal-sanitized before persistence.
-+  This explicit request takes precedence over blockers.
++- `metadata.attention="captain-input"` requests captain input and renders
++  orange `#FF9800`. This explicit request takes precedence over blockers.
 +- `status="in_progress"` together with
 +  `metadata.attention="agent-working"` and no `blockedBy` asserts that the agent
 +  is actually working and renders green `#00E676`.
@@ -186,16 +166,9 @@ index bc82d03..8092f42 100644
 +`working`, `waiting`, and `needs you`, so attention is not communicated by color
 +alone. Mutation-only tool responses stay compact and do not include the key.
 +
-+Every interactive task renderer puts captain context on an immediately
-+following indented `└─ needs you: <specific context>` line; it is never an
-+inline task-row suffix. ANSI-aware wrapping preserves that indentation. For
-+historical captain-input records whose reason is missing or invalid, the safest
-+available active form, description, or subject is shown with an explicit
-+`decision context missing`/`invalid` notice.
-+
-+When a captain answers, clear `captain-input` and `attentionReason` in the same
-+update by setting `attention` to `waiting` and `attentionReason` to `null`; only
-+change it to `agent-working` in the same update that starts actual work. Before pausing, blocking, or handing control back, set `attention`
++When a captain answers, clear `captain-input` by setting `attention` to
++`waiting`; only change it to `agent-working` in the same update that starts
++actual work. Before pausing, blocking, or handing control back, set `attention`
 +to `waiting` (and move `in_progress` back to `pending` when appropriate).
 +Supply `metadata.attentionReason` with an actionable reason, such as `awaiting
 +CI`, `waiting for worker test results`, or `tests failed; fix assertion`.
@@ -292,7 +265,7 @@ index eec9425..190b796 100644
  		};
  	}
 diff --git a/state/selectors.ts b/state/selectors.ts
-index 7635a75..bb63112 100644
+index 7635a75..2c106f0 100644
 --- a/state/selectors.ts
 +++ b/state/selectors.ts
 @@ -43,12 +43,11 @@ export function selectTodoCounts(state: TaskState): TodoCounts {
@@ -324,64 +297,16 @@ index 7635a75..bb63112 100644
   * the visible task slice plus the overflow summary parts.
   */
  export interface OverlayLayout {
-@@ -75,6 +74,13 @@ export interface OverlayLayout {
- }
- export function selectOverlayLayout(state: TaskState, budget: number): OverlayLayout {
- 	const all = selectVisibleTasks(state);
-+	if (budget <= 0) {
-+		return {
-+			visible: [],
-+			hiddenCompleted: all.filter((task) => task.status === "completed").length,
-+			truncatedTail: all.filter((task) => task.status !== "completed").length,
-+		};
-+	}
- 	if (all.length <= budget) {
- 		return { visible: all, hiddenCompleted: 0, truncatedTail: 0 };
- 	}
 diff --git a/state/state-reducer.ts b/state/state-reducer.ts
-index 0df4ba1..a69f9ec 100644
+index 0df4ba1..70e3df0 100644
 --- a/state/state-reducer.ts
 +++ b/state/state-reducer.ts
-@@ -1,3 +1,8 @@
-+import {
-+	ATTENTION_REASON_MAX_LENGTH,
-+	normalizeLegacyTitleMarker,
-+	sanitizeAttentionReason,
-+} from "../tool/sanitize.js";
+@@ -1,3 +1,4 @@
++import { normalizeLegacyTitleMarker } from "../tool/sanitize.js";
  import type { Task, TaskAction, TaskMutationParams, TaskStatus } from "../tool/types.js";
  import { isTransitionValid } from "./invariants.js";
  import type { TaskState } from "./state.js";
-@@ -76,6 +81,29 @@ function taskChanged(before: Task, after: Task): boolean {
-  * in-reducer — see Plan §Decisions §Decision 2.
-  */
- export function applyTaskMutation(state: TaskState, action: TaskAction, params: TaskMutationParams): ApplyResult {
-+	let inputMetadata = params.metadata;
-+	if ((action === "create" || action === "update") && inputMetadata !== undefined) {
-+		if (
-+			inputMetadata.attention === "captain-input" &&
-+			(!Object.hasOwn(inputMetadata, "attentionReason") || inputMetadata.attentionReason === null)
-+		) {
-+			return errorResult(
-+				state,
-+				'metadata.attentionReason is required in the same mutation that sets metadata.attention="captain-input"',
-+			);
-+		}
-+		if (Object.hasOwn(inputMetadata, "attentionReason") && inputMetadata.attentionReason !== null) {
-+			const reason = sanitizeAttentionReason(inputMetadata.attentionReason);
-+			if (reason === undefined) {
-+				return errorResult(
-+					state,
-+					`metadata.attentionReason must be a non-empty string of at most ${ATTENTION_REASON_MAX_LENGTH} characters`,
-+				);
-+			}
-+			inputMetadata = { ...inputMetadata, attentionReason: reason };
-+		}
-+	}
-+
- 	switch (action) {
- 		case "create": {
- 			if (!params.subject?.trim()) {
-@@ -90,14 +118,14 @@ export function applyTaskMutation(state: TaskState, action: TaskAction, params:
+@@ -90,7 +91,7 @@ export function applyTaskMutation(state: TaskState, action: TaskAction, params:
  			}
  			const newTask: Task = {
  				id: state.nextId,
@@ -390,27 +315,7 @@ index 0df4ba1..a69f9ec 100644
  				status: "pending",
  			};
  			if (params.description) newTask.description = params.description;
- 			if (params.activeForm) newTask.activeForm = params.activeForm;
- 			if (params.blockedBy?.length) newTask.blockedBy = [...params.blockedBy];
- 			if (params.owner) newTask.owner = params.owner;
--			if (params.metadata) newTask.metadata = { ...params.metadata };
-+			if (inputMetadata) newTask.metadata = { ...inputMetadata };
- 
- 			const newTasks = [...state.tasks, newTask];
- 			return {
-@@ -154,9 +182,9 @@ export function applyTaskMutation(state: TaskState, action: TaskAction, params:
- 			}
- 
- 			let newMetadata = current.metadata;
--			if (params.metadata !== undefined) {
-+			if (inputMetadata !== undefined) {
- 				const merged: Record<string, unknown> = { ...(current.metadata ?? {}) };
--				for (const [k, v] of Object.entries(params.metadata)) {
-+				for (const [k, v] of Object.entries(inputMetadata)) {
- 					if (v === null) delete merged[k];
- 					else merged[k] = v;
- 				}
-@@ -164,7 +192,7 @@ export function applyTaskMutation(state: TaskState, action: TaskAction, params:
+@@ -164,7 +165,7 @@ export function applyTaskMutation(state: TaskState, action: TaskAction, params:
  			}
  
  			const updated: Task = { ...current, status: newStatus };
@@ -420,7 +325,7 @@ index 0df4ba1..a69f9ec 100644
  			if (params.activeForm !== undefined) updated.activeForm = params.activeForm;
  			if (params.owner !== undefined) updated.owner = params.owner;
 diff --git a/todo-overlay.ts b/todo-overlay.ts
-index 1ea2ba1..f11e13c 100644
+index 1ea2ba1..d7d14e2 100644
 --- a/todo-overlay.ts
 +++ b/todo-overlay.ts
 @@ -4,8 +4,9 @@
@@ -435,7 +340,7 @@ index 1ea2ba1..f11e13c 100644
   *
   * Reads live state via `getRenderState()` (the ctx-less foreground slot) at render
   * time — NEVER `replayFromBranch` from `tool_execution_end` (branch is stale;
-@@ -13,17 +14,23 @@
+@@ -13,17 +14,22 @@
   */
  
  import type { ExtensionUIContext, Theme } from "@earendil-works/pi-coding-agent";
@@ -453,7 +358,6 @@ index 1ea2ba1..f11e13c 100644
 +	ATTENTION_INTERVAL_MS,
 +	classifyAttention,
 +	formatAttentionLegend,
-+	formatCaptainDecisionLines,
 +	formatOverlayTaskLine,
 +} from "./view/format.js";
  
@@ -464,7 +368,7 @@ index 1ea2ba1..f11e13c 100644
  const OVERLAY_MORE = "more";
  const OVERLAY_EXPAND_HINT = "{key} to expand";
  const OVERLAY_COLLAPSED = "collapsed";
-@@ -36,11 +43,50 @@ export class TodoOverlay {
+@@ -36,11 +42,50 @@ export class TodoOverlay {
  	private hiddenCompletedTaskIds = new Set<number>();
  	private lastNextId: number | undefined;
  	private collapsed = false;
@@ -515,7 +419,7 @@ index 1ea2ba1..f11e13c 100644
  			this.uiCtx = ctx;
  			this.widgetRegistered = false;
  			this.tui = undefined;
-@@ -51,8 +97,10 @@ export class TodoOverlay {
+@@ -51,8 +96,10 @@ export class TodoOverlay {
  		if (!this.uiCtx) return;
  		const snapshot = this.getSnapshot();
  		const visible = this.selectOverlayTasks(snapshot);
@@ -526,7 +430,7 @@ index 1ea2ba1..f11e13c 100644
  			if (this.widgetRegistered) {
  				this.uiCtx.setWidget(WIDGET_KEY, undefined);
  				this.widgetRegistered = false;
-@@ -62,12 +110,21 @@ export class TodoOverlay {
+@@ -62,12 +109,21 @@ export class TodoOverlay {
  		}
  
  		if (!this.widgetRegistered) {
@@ -550,7 +454,7 @@ index 1ea2ba1..f11e13c 100644
  						invalidate: () => {
  							// No rendered strings are cached. Pi invalidates on theme changes;
  							// the next render reads uiCtx.theme.
-@@ -83,6 +140,7 @@ export class TodoOverlay {
+@@ -83,6 +139,7 @@ export class TodoOverlay {
  	}
  
  	resetCompletedDisplayState(): void {
@@ -558,7 +462,7 @@ index 1ea2ba1..f11e13c 100644
  		this.completedTaskIdsPendingHide.clear();
  		this.hiddenCompletedTaskIds.clear();
  		this.lastNextId = undefined;
-@@ -99,6 +157,7 @@ export class TodoOverlay {
+@@ -99,6 +156,7 @@ export class TodoOverlay {
  
  	toggleCollapse(): void {
  		this.collapsed = !this.collapsed;
@@ -566,7 +470,7 @@ index 1ea2ba1..f11e13c 100644
  		// Forced full redraw on the collapsed↔expanded height step, mirroring the
  		// lane-dock's requestRender(shapeChanged); distinct from the non-forced
  		// requestRender() refresh paths in update()/hideCompletedTasksFromPreviousTurn().
-@@ -138,7 +197,10 @@ export class TodoOverlay {
+@@ -138,7 +196,10 @@ export class TodoOverlay {
  	private renderWidget(theme: Theme, width: number): string[] {
  		const snapshot = this.getSnapshot();
  		const overlayTasks = this.selectOverlayTasks(snapshot);
@@ -578,7 +482,7 @@ index 1ea2ba1..f11e13c 100644
  
  		const overlayState = { tasks: overlayTasks, nextId: snapshot.nextId };
  		const truncate = (line: string): string => truncateToWidth(line, width, "…");
-@@ -147,9 +209,10 @@ export class TodoOverlay {
+@@ -147,9 +208,10 @@ export class TodoOverlay {
  		const showIds = selectShowTaskIds(overlayState);
  
  		const headingColor = hasActive ? "accent" : "dim";
@@ -592,7 +496,7 @@ index 1ea2ba1..f11e13c 100644
  
  		// Collapsed view: just the heading + a dim "└─" expand hint, then the
  		// trailing spacer. Short-circuit before the budget math and the completed-
-@@ -161,6 +224,7 @@ export class TodoOverlay {
+@@ -161,6 +223,7 @@ export class TodoOverlay {
  		// shortcut was bound and the overlay collapsed) — render a static collapsed
  		// label instead of splicing the sentinel into the placeholder.
  		if (this.collapsed) {
@@ -600,7 +504,7 @@ index 1ea2ba1..f11e13c 100644
  			const key = resolveCollapseKey();
  			const hint =
  				key === COLLAPSE_KEY_OFF
-@@ -169,16 +233,37 @@ export class TodoOverlay {
+@@ -169,16 +232,23 @@ export class TodoOverlay {
  			return this.withTrailingSpacer([heading, truncate(`${theme.fg("dim", "└─")} ${theme.fg("dim", hint)}`)]);
  		}
  
@@ -613,22 +517,8 @@ index 1ea2ba1..f11e13c 100644
  		// expand/collapse shortcut also expands this live widget. Optional chaining
  		// preserves compatibility with hosts predating getToolsExpanded().
 -		const bodyBudget = this.uiCtx?.getToolsExpanded?.() === true ? overlayTasks.length : getMaxWidgetLines() - 1;
--		const layout = selectOverlayLayout(overlayState, bodyBudget);
-+		const expanded = this.uiCtx?.getToolsExpanded?.() === true;
-+		const bodyBudget = expanded ? overlayTasks.length : getMaxWidgetLines() - 2;
-+		let taskBudget = bodyBudget;
-+		let layout = selectOverlayLayout(overlayState, taskBudget);
-+		// Captain context consumes physical rows too. Reduce visible task slots
-+		// until main rows + wrapped decision rows + any summary fit the budget.
-+		while (!expanded && taskBudget > 0) {
-+			const decisionRows = layout.visible.reduce(
-+				(total, task) => total + formatCaptainDecisionLines(task, theme, width, "  ").length,
-+				0,
-+			);
-+			const summaryRows = layout.hiddenCompleted > 0 || layout.truncatedTail > 0 ? 1 : 0;
-+			if (layout.visible.length + decisionRows + summaryRows <= bodyBudget) break;
-+			layout = selectOverlayLayout(overlayState, --taskBudget);
-+		}
++		const bodyBudget = this.uiCtx?.getToolsExpanded?.() === true ? overlayTasks.length : getMaxWidgetLines() - 2;
+ 		const layout = selectOverlayLayout(overlayState, bodyBudget);
 +		this.animatedIds = new Set(layout.visible.filter((task) =>
 +			classifyAttention(task) === "agent-working" &&
 +			// Reserve a column for truncation's ellipsis: don't tick invisible glyphs.
@@ -639,11 +529,10 @@ index 1ea2ba1..f11e13c 100644
  		for (const task of layout.visible) {
 -			lines.push(truncate(`${theme.fg("dim", "├─")} ${formatOverlayTaskLine(task, theme, showIds)}`));
 +			lines.push(truncate(`${theme.fg("dim", "├─")} ${formatOverlayTaskLine(task, theme, showIds, frame)}`));
-+			lines.push(...formatCaptainDecisionLines(task, theme, width, "  "));
  		}
  
  		const newlyDisplayedCompletedTaskIds = overlayTasks
-@@ -224,11 +309,16 @@ export class TodoOverlay {
+@@ -224,11 +294,16 @@ export class TodoOverlay {
  	}
  
  	dispose(): void {
@@ -662,7 +551,7 @@ index 1ea2ba1..f11e13c 100644
  	}
  }
 diff --git a/todo.ts b/todo.ts
-index 55420d2..c1e50b0 100644
+index 55420d2..400369f 100644
 --- a/todo.ts
 +++ b/todo.ts
 @@ -28,7 +28,7 @@ import {
@@ -670,7 +559,7 @@ index 55420d2..c1e50b0 100644
  	TodoParamsSchema,
  } from "./tool/types.js";
 -import { formatCommandTaskLine, renderTodoCall, renderTodoResult } from "./view/format.js";
-+import { formatAttentionLegend, formatCommandTaskLines, renderTodoCall, renderTodoResult } from "./view/format.js";
++import { formatAttentionLegend, formatCommandTaskLine, renderTodoCall, renderTodoResult } from "./view/format.js";
  
  // English fallbacks for localized /todos section headers — the box-drawing
  // decoration is part of the localized string so translators can adjust spacing.
@@ -678,7 +567,7 @@ index 55420d2..c1e50b0 100644
  	"Use blockedBy to express dependencies (A is blocked by B). On create, pass blockedBy as the initial set. On update, use addBlockedBy / removeBlockedBy (additive merge — do not resend the full array). Cycles are rejected.",
  	"list hides tombstoned (deleted) tasks by default; pass includeDeleted:true to see them. Pass status to filter by a single status.",
  	"Subject must be short and imperative (e.g. 'Research existing tool'); description is for long-form detail. activeForm is a present-continuous label shown while in_progress.",
-+	"Set metadata.attention to captain-input only when a real captain decision or required fact exists, and include metadata.attentionReason in that same mutation with the exact concise decision (for example: choose merge or hold PR 24). Set attention to agent-working together with in_progress only while work is actually underway; clear captain-input and attentionReason when the decision is resolved. Set waiting before pausing, blocking, or handing back. Unknown attention renders as waiting. Supply attentionReason with concrete waiting/input/failure context, not supervising; clear obsolete reasons when work resumes. Activity is caller-asserted, not automatically bound to worker liveness.",
++	"Set metadata.attention to captain-input only while a captain answer is required. Set it to agent-working together with in_progress only while work is actually underway; clear or set waiting before pausing, blocking, or handing back. Unknown attention renders as waiting. Supply metadata.attentionReason with a concrete waiting/input/failure reason (e.g. awaiting CI or waiting for worker test results), not supervising; clear obsolete reasons when work resumes. Activity is caller-asserted, not automatically bound to worker liveness.",
  ];
  
  export function registerTodoTool(pi: ExtensionAPI): void {
@@ -691,22 +580,22 @@ index 55420d2..c1e50b0 100644
  			if (groups.pending.length > 0) {
  				lines.push(t("command.section.pending", SECTION_PENDING));
 -				for (const task of groups.pending) lines.push(formatCommandTaskLine(task, "○"));
-+				for (const task of groups.pending) lines.push(...formatCommandTaskLines(task, "○", ctx.ui.theme));
++				for (const task of groups.pending) lines.push(formatCommandTaskLine(task, "○", ctx.ui.theme));
  			}
  			if (groups.inProgress.length > 0) {
  				lines.push(t("command.section.in_progress", SECTION_IN_PROGRESS));
 -				for (const task of groups.inProgress) lines.push(formatCommandTaskLine(task, "◐"));
-+				for (const task of groups.inProgress) lines.push(...formatCommandTaskLines(task, "◐", ctx.ui.theme));
++				for (const task of groups.inProgress) lines.push(formatCommandTaskLine(task, "◐", ctx.ui.theme));
  			}
  			if (groups.completed.length > 0) {
  				lines.push(t("command.section.completed", SECTION_COMPLETED));
 -				for (const task of groups.completed) lines.push(formatCommandTaskLine(task, "✓"));
-+				for (const task of groups.completed) lines.push(...formatCommandTaskLines(task, "✓", ctx.ui.theme));
++				for (const task of groups.completed) lines.push(formatCommandTaskLine(task, "✓", ctx.ui.theme));
  			}
  
  			ctx.ui.notify(lines.join("\n"), "info");
 diff --git a/tool/sanitize.ts b/tool/sanitize.ts
-index cbb59e5..2143496 100644
+index cbb59e5..d4e43ce 100644
 --- a/tool/sanitize.ts
 +++ b/tool/sanitize.ts
 @@ -5,6 +5,16 @@
@@ -726,66 +615,20 @@ index cbb59e5..2143496 100644
  export function sanitizeTerminalText(value: string): string {
  	return (
  		value
-@@ -24,3 +34,24 @@ export function sanitizeTerminalText(value: string): string {
- 			.replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "")
- 	);
- }
-+
-+/** Persisted decision/waiting context is concise, one-line, and terminal-safe. */
-+export const ATTENTION_REASON_MAX_LENGTH = 160;
-+
-+export function sanitizeAttentionReason(value: unknown): string | undefined {
-+	if (typeof value !== "string") return undefined;
-+	const sanitized = sanitizeTerminalText(value).replace(/\s+/g, " ").trim();
-+	if (!sanitized || Array.from(sanitized).length > ATTENTION_REASON_MAX_LENGTH) return undefined;
-+	return sanitized;
-+}
-+
-+/** Safe bounded fallback for historical captain-input records with bad context. */
-+export function formatLegacyAttentionFallback(value: unknown): string | undefined {
-+	if (typeof value !== "string") return undefined;
-+	const sanitized = sanitizeTerminalText(value).replace(/\s+/g, " ").trim();
-+	if (!sanitized) return undefined;
-+	const points = Array.from(sanitized);
-+	return points.length <= ATTENTION_REASON_MAX_LENGTH
-+		? sanitized
-+		: `${points.slice(0, ATTENTION_REASON_MAX_LENGTH - 1).join("")}…`;
-+}
-diff --git a/tool/types.ts b/tool/types.ts
-index 805cf34..fc933ef 100644
---- a/tool/types.ts
-+++ b/tool/types.ts
-@@ -111,7 +111,7 @@ export const TodoParamsSchema = Type.Object({
- 	owner: Type.Optional(Type.String({ description: "Agent/owner assigned to this task" })),
- 	metadata: Type.Optional(
- 		Type.Record(Type.String(), Type.Unknown(), {
--			description: "Arbitrary metadata; pass null value for a key to delete that key on update",
-+			description: "Arbitrary metadata. Setting attention='captain-input' requires a specific attentionReason (max 160 characters) in the same mutation; clear both when resolved. Pass null to delete a key on update.",
- 		}),
- 	),
- 	id: Type.Optional(
 diff --git a/view/format.ts b/view/format.ts
-index 605c100..c9d99bf 100644
+index 605c100..f0fa5a6 100644
 --- a/view/format.ts
 +++ b/view/format.ts
-@@ -1,9 +1,14 @@
- import type { Theme } from "@earendil-works/pi-coding-agent";
--import { Text } from "@earendil-works/pi-tui";
-+import { type Component, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+@@ -3,7 +3,7 @@ import { Text } from "@earendil-works/pi-tui";
  import { formatStatusLabel } from "../state/i18n-bridge.js";
  import { selectTaskSubjectById } from "../state/selectors.js";
  import type { TaskState } from "../state/state.js";
 -import { sanitizeTerminalText } from "../tool/sanitize.js";
-+import {
-+	formatLegacyAttentionFallback,
-+	normalizeLegacyTitleMarker,
-+	sanitizeAttentionReason,
-+	sanitizeTerminalText,
-+} from "../tool/sanitize.js";
++import { normalizeLegacyTitleMarker, sanitizeTerminalText } from "../tool/sanitize.js";
  import type { Task, TaskAction, TaskDetails, TaskMutationParams, TaskStatus } from "../tool/types.js";
  
  // Re-export so legacy import paths (todo.ts, tests) continue to resolve;
-@@ -17,7 +22,7 @@ export { formatStatusLabel };
+@@ -17,7 +17,7 @@ export { formatStatusLabel };
  export const STATUS_GLYPH: Record<TaskStatus, string> = {
  	pending: "○",
  	in_progress: "◐",
@@ -794,7 +637,7 @@ index 605c100..c9d99bf 100644
  	deleted: "⊘",
  };
  
-@@ -46,9 +51,72 @@ export const ACTION_GLYPH: Record<TaskAction, string> = {
+@@ -46,9 +46,72 @@ export const ACTION_GLYPH: Record<TaskAction, string> = {
  	clear: "∅",
  };
  
@@ -868,7 +711,7 @@ index 605c100..c9d99bf 100644
   * overlay caller never renders a `deleted` row but uses `✗` in its
   * error-toned palette. Mirrors pre-refactor `todo-overlay.ts:23-33`.
   */
-@@ -69,34 +137,80 @@ export function overlayStatusGlyph(status: TaskStatus, theme: Theme): string {
+@@ -69,34 +132,54 @@ export function overlayStatusGlyph(status: TaskStatus, theme: Theme): string {
   * Format a single task row for the persistent overlay. The subject color
   * reflects task state while IDs and supporting metadata stay visually quiet.
   */
@@ -889,7 +732,7 @@ index 605c100..c9d99bf 100644
 -	if (t.status === "in_progress" && t.activeForm) {
 -		line += ` ${theme.fg("muted", `(${sanitizeTerminalText(t.activeForm)})`)}`;
 -	}
-+	const subtitle = classifyAttention(t) === "captain-input" ? "" : formatAttentionSubtitle(t);
++	const subtitle = formatAttentionSubtitle(t);
 +	if (subtitle) line += ` ${theme.fg("muted", `(${subtitle})`)}`;
  	if (t.blockedBy && t.blockedBy.length > 0) {
  		line += ` ${theme.fg("muted", `⛓ ${t.blockedBy.map((id) => `#${id}`).join(",")}`)}`;
@@ -903,25 +746,20 @@ index 605c100..c9d99bf 100644
 - */
 -export function formatCommandTaskLine(t: Task, glyph: string): string {
 -	const form = t.status === "in_progress" && t.activeForm ? ` (${sanitizeTerminalText(t.activeForm)})` : "";
-+/** Shared, bounded context policy for overlay, command, and tool renderers. */
++/** Display-only reasons: never synthesize a failure or a nonexistent blocker. */
 +export function formatAttentionSubtitle(task: Task): string {
 +	const attention = classifyAttention(task);
 +	if (attention === undefined) return "";
-+	const reason = sanitizeAttentionReason(task.metadata?.attentionReason);
-+	const legacyReason = formatLegacyAttentionFallback(task.metadata?.attentionReason) ?? "";
 +	const clean = (value: unknown): string => {
-+		const text = formatLegacyAttentionFallback(value) ?? "";
++		if (typeof value !== "string") return "";
++		const text = sanitizeTerminalText(value).trim();
 +		return /^supervising[.!…]*$/i.test(text) ? "" : text;
 +	};
++	const reason = clean(task.metadata?.attentionReason);
 +	const form = clean(task.activeForm);
-+	if (attention === "agent-working") return form || reason || legacyReason;
-+	if (attention === "captain-input") {
-+		if (reason) return `needs you: ${reason}`;
-+		const fallback = legacyReason || form || clean(task.description) || clean(task.subject) || `task #${task.id}`;
-+		const problem = task.metadata && Object.hasOwn(task.metadata, "attentionReason") ? "invalid" : "missing";
-+		return `needs you: ${fallback} (decision context ${problem})`;
-+	}
-+	if (reason || legacyReason) return reason || legacyReason;
++	if (attention === "agent-working") return form || reason;
++	if (reason) return reason;
++	if (attention === "captain-input") return form || "awaiting captain input";
 +	if (task.blockedBy?.length) return `blocked by dependency ${task.blockedBy.map((id) => `#${id}`).join(", ")}`;
 +	// Preserve legacy actionable waiting/failure labels, not a stale working verb.
 +	if (/^(waiting|awaiting|blocked|paused|failed|failure|error|needs|requires)\b/i.test(form)) return form;
@@ -929,40 +767,19 @@ index 605c100..c9d99bf 100644
 +	return task.status === "pending" ? "pending; reason unknown" : "waiting; activity unconfirmed";
 +}
 +
-+/** ANSI-aware subordinate decision lines shared by every interactive task list. */
-+export function formatCaptainDecisionLines(task: Task, theme: Theme, width: number, indent = "  "): string[] {
-+	if (classifyAttention(task) !== "captain-input" || width <= 0) return [];
-+	const subtitle = formatAttentionSubtitle(task);
-+	const label = "needs you:";
-+	const context = subtitle.slice(label.length).trimStart();
-+	const marker = `${indent}${theme.fg("dim", "└─")} `;
-+	const contentWidth = Math.max(1, width - visibleWidth(marker));
-+	const content = `${truecolor(CAPTAIN_ORANGE_RGB, label)} ${theme.fg("text", context)}`;
-+	const wrapped = wrapTextWithAnsi(content, contentWidth);
-+	return wrapped.map((line, index) =>
-+		truncateToWidth(`${index === 0 ? marker : " ".repeat(visibleWidth(marker))}${line}`, width, "…"),
-+	);
-+}
-+
-+/** Format themed task lines for `/todos` and detailed tool results. */
-+export function formatCommandTaskLines(t: Task, glyph: string, theme: Theme, width = 80): string[] {
-+	const subtitle = classifyAttention(t) === "captain-input" ? "" : formatAttentionSubtitle(t);
++/** Format a themed task line for `/todos` and detailed tool results. */
++export function formatCommandTaskLine(t: Task, glyph: string, theme: Theme): string {
++	const subtitle = formatAttentionSubtitle(t);
 +	const form = subtitle ? ` (${subtitle})` : "";
 +	if (t.status === "completed") glyph = theme.fg("success", "✓");
  	const block = t.blockedBy?.length ? `    ⛓ ${t.blockedBy.map((id) => `#${id}`).join(",")}` : "";
 -	return `  ${glyph} #${t.id} ${sanitizeTerminalText(t.subject)}${form}${block}`;
 +	const subject = sanitizeTerminalText(normalizeLegacyTitleMarker(t.subject));
-+	const main = truncateToWidth(`  ${glyph} ${formatTaskIdWithAttention(t, theme)} ${subject}${form}${block}`, width, "…");
-+	return [main, ...formatCaptainDecisionLines(t, theme, width, "    ")];
-+}
-+
-+/** Compatibility wrapper for callers that only accept a preformatted string. */
-+export function formatCommandTaskLine(t: Task, glyph: string, theme: Theme): string {
-+	return formatCommandTaskLines(t, glyph, theme).join("\n");
++	return `  ${glyph} ${formatTaskIdWithAttention(t, theme)} ${subject}${form}${block}`;
  }
  
  // ---------------------------------------------------------------------------
-@@ -117,7 +231,7 @@ export function renderTodoCall(
+@@ -117,7 +200,7 @@ export function renderTodoCall(
  	let text = theme.fg("toolTitle", theme.bold("todo ")) + theme.fg("muted", glyph);
  
  	if (args.action === "create" && args.subject) {
@@ -971,7 +788,7 @@ index 605c100..c9d99bf 100644
  	} else if (
  		(args.action === "update" || args.action === "get" || args.action === "delete") &&
  		args.id !== undefined
-@@ -130,35 +244,47 @@ export function renderTodoCall(
+@@ -130,35 +213,44 @@ export function renderTodoCall(
  	return new Text(text, 0, 0);
  }
  
@@ -981,9 +798,8 @@ index 605c100..c9d99bf 100644
 - * fall back to plain `✓`). Identical visual output to pre-refactor
 - * `todo.ts:533-565`.
 - */
--export function renderTodoResult(result: { details?: unknown }, theme: Theme): Text {
 +/** Render compact mutations and themed list/get details from persisted task data. */
-+export function renderTodoResult(result: { details?: unknown }, theme: Theme): Component {
+ export function renderTodoResult(result: { details?: unknown }, theme: Theme): Text {
  	const details = result.details as TaskDetails | undefined;
 -	let status: TaskStatus | undefined;
 -	if (details) {
@@ -1010,19 +826,16 @@ index 605c100..c9d99bf 100644
 +		let tasks = params.includeDeleted === true ? details.tasks : details.tasks.filter((task) => task.status !== "deleted");
 +		if (params.status) tasks = tasks.filter((task) => task.status === params.status);
 +		if (tasks.length === 0) return new Text(theme.fg("dim", "No tasks"), 0, 0);
-+		return {
-+			render: (width) => [
-+				truncateToWidth(formatAttentionLegend(theme), width, "…"),
-+				...tasks.flatMap((task) => formatCommandTaskLines(task, STATUS_GLYPH[task.status], theme, width)),
-+			],
-+		};
++		return new Text(
++			[formatAttentionLegend(theme), ...tasks.map((task) => formatCommandTaskLine(task, STATUS_GLYPH[task.status], theme))].join("\n"),
++			0,
++			0,
++		);
 +	}
 +
 +	if (details.action === "get") {
 +		const task = details.tasks.find((candidate) => candidate.id === params.id);
-+		return task
-+			? { render: (width) => formatCommandTaskLines(task, STATUS_GLYPH[task.status], theme, width) }
-+			: new Text(theme.fg("success", "✓"), 0, 0);
++		return new Text(task ? formatCommandTaskLine(task, STATUS_GLYPH[task.status], theme) : theme.fg("success", "✓"), 0, 0);
 +	}
 +
 +	let task: Task | undefined;

@@ -67,9 +67,33 @@ module.exports = async function testAnimation({ TodoOverlay, store, format, conf
     overlay.setUICtx(ui);
     overlay.update();
     const render = () => component?.render(width) ?? [];
-    const blue = (glyph) => ansi([0, 102, 255], glyph);
-    assert.ok(render().join("\n").includes(blue("⠋")));
+    const green = (glyph) => ansi([0, 230, 118], glyph);
+    const gray = ansi([176, 176, 176], "●");
+    const orange = ansi([255, 152, 0], "●");
+    assert.ok(render().join("\n").includes(green("⠋")));
     assert.equal(clock.intervals(), 1, "one timer for multiple active tasks");
+
+    // Preserve the exact title while making overlay meaning visible without color.
+    state([
+      task({ id: 1, status: "pending", metadata: { attention: "waiting" } }),
+      task({ id: 2 }),
+      task({ id: 3, subject: "Refresh TodoAttention", blockedBy: [1], metadata: { attention: "captain-input", attentionReason: "approve or reject installing PR 24" } }),
+      task({ id: 4, blockedBy: [1] }),
+      task({ id: 5, status: "completed", metadata: {} }),
+    ]);
+    overlay.update();
+    const semanticOverlay = render().join("\n");
+    const plainOverlay = semanticOverlay.replace(/\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g, "");
+    assert.ok(plainOverlay.includes("● Todos (1/5)"), "heading text/glyph contract is exact");
+    assert.ok(semanticOverlay.includes(format.formatAttentionLegend(theme)));
+    assert.ok(semanticOverlay.includes(gray) && semanticOverlay.includes(green("⠋")) && semanticOverlay.includes(orange));
+    for (const label of ["working", "waiting", "needs you"]) assert.ok(plainOverlay.includes(label));
+    const overlayLines = plainOverlay.split("\n");
+    const captainLine = overlayLines.findIndex((line) => line.includes("Refresh TodoAttention"));
+    assert.ok(captainLine >= 0 && !overlayLines[captainLine].includes("needs you:"));
+    assert.equal(overlayLines[captainLine + 1], "  └─ needs you: approve or reject installing PR 24");
+    state([task(), task({ id: 2 })]);
+    overlay.update(); render();
     const before = registrations;
     for (let i = 0; i < 20; i++) { overlay.update(); render(); }
     assert.equal(registrations, before, "refresh never replaces the widget");
@@ -78,7 +102,7 @@ module.exports = async function testAnimation({ TodoOverlay, store, format, conf
     const untouched = JSON.stringify(store.getRenderState());
     for (const glyph of ["⠙", "⠹", "⠸", "⠼", "⠴", "⠋"]) {
       clock.advance(150);
-      assert.ok(render().join("\n").includes(blue(glyph)));
+      assert.ok(render().join("\n").includes(green(glyph)));
     }
     clock.advance(5100);
     assert.equal(requests.length, 40, "exactly 40 differential requests / 6 seconds (6.667 Hz)");
@@ -132,9 +156,22 @@ module.exports = async function testAnimation({ TodoOverlay, store, format, conf
     motion(true);
     clock.advance(150);
     assert.equal(clock.intervals(), 0);
-    assert.ok(render().join("\n").includes(blue("●")));
+    assert.ok(render().join("\n").includes(green("●")));
     for (const value of [false, "true", null]) { motion(value); assert.equal(config.getReducedMotion(), false); }
     render(); assert.equal(clock.intervals(), 1);
+
+    // Wrapped decision rows count against the overlay budget.
+    state([
+      task({ id: 1, status: "pending", subject: "Choose deployment", metadata: {
+        attention: "captain-input",
+        attentionReason: "choose whether PR 24 should be held for another review or approved for installation after merge",
+      } }),
+      ...Array.from({ length: 12 }, (_, i) => task({ id: i + 2, status: "pending" })),
+    ]);
+    overlay.update();
+    const budgeted = render();
+    assert.ok(budgeted.length <= 13, `overlay row budget exceeded: ${budgeted.length}`);
+    assert.ok(budgeted.join("\n").includes("needs you:"));
 
     // Budget-hidden active tasks don't keep an otherwise static widget ticking.
     state([...Array.from({ length: 20 }, (_, i) => task({ id: i + 1, status: "pending" })), task({ id: 50 })]);
