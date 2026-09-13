@@ -25,6 +25,7 @@ EXPECTED_HASHES = {
     "state/state-reducer.ts": "cd7d03b0f167920b76a72069f5b5f40ecc524bf4c4f6dd8909469f711d273dd0",
     "todo.ts": "44b06d99f4c7a82419447f1388e644e1e571efc6e64d0482f3d7bfb9f0c5b886",
     "tool/sanitize.ts": "eea928b89bc7b1768e75f3123acb881e984fe1604435e6e2cd7b576a6006616c",
+    "tool/types.ts": "5f2f68579b5f563e115a7b25b52f59fbc1ceebbaacb3739b134f7a3368454572",
     "view/format.ts": "444cf33f80cb03c54ab57a78fc7d47d5c1632ffd53cade92c511eca6006ae2b6",
 }
 PATCH = Path(__file__).with_name("patches") / "rpiv-todo-2.9.0-attention.patch"

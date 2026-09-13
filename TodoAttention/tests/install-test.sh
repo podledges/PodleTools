@@ -34,10 +34,10 @@ if python3 "$root/install.py" install --source "$source_dir" --agent-dir "$scrat
 fi
 grep -q 'found 2' "$scratch/rejected.out"
 cmp "$scratch/rejected-before.json" "$scratch/rejected-agent/settings.json"
-[[ ! -e "$scratch/rejected-agent/todoattention/releases/rpiv-todo-2.9.0-attention-v3" ]]
+[[ ! -e "$scratch/rejected-agent/todoattention/releases/rpiv-todo-2.9.0-attention-v4" ]]
 
 python3 "$root/install.py" install --source "$source_dir" --agent-dir "$scratch/agent"
-release="$scratch/agent/todoattention/releases/rpiv-todo-2.9.0-attention-v3"
+release="$scratch/agent/todoattention/releases/rpiv-todo-2.9.0-attention-v4"
 [[ -f "$release/index.ts" ]]
 [[ -f "$release/node_modules/@juicesharp/rpiv-config/package.json" ]]
 [[ -f "$release/node_modules/typebox/package.json" ]]

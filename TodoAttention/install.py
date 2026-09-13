@@ -16,8 +16,9 @@ from typing import Any
 import prepare
 
 UPSTREAM_SOURCE = "npm:@juicesharp/rpiv-todo"
-RELEASE_NAME = "rpiv-todo-2.9.0-attention-v3"
+RELEASE_NAME = "rpiv-todo-2.9.0-attention-v4"
 LEGACY_RELEASES = {
+    "rpiv-todo-2.9.0-attention-v3": prepare.PATCH.with_name("rpiv-todo-2.9.0-attention-v3.patch"),
     "rpiv-todo-2.9.0-attention-v2": prepare.PATCH.with_name("rpiv-todo-2.9.0-attention-v2.patch"),
     "rpiv-todo-2.9.0-attention-v1": prepare.PATCH.with_name("rpiv-todo-2.9.0-attention-v1.patch"),
 }

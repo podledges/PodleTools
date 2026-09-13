@@ -58,6 +58,19 @@ module.exports = async function testRenderer({ format, reducer, replay, sanitize
   assert.equal(format.CAPTAIN_ORANGE_HEX, "#FF9800");
   assert.equal(format.formatAttentionLegend(theme), legend);
   assert.equal(tui.visibleWidth(legend), 35);
+  const legacyCaptainCases = [
+    [base({ subject: "Choose deployment", metadata: { attention: "captain-input" } }), "needs you: Choose deployment (decision context missing)"],
+    [base({ subject: "Choose deployment", metadata: { attention: "captain-input", attentionReason: 42 } }), "needs you: Choose deployment (decision context invalid)"],
+    [base({ subject: "Choose deployment", metadata: { attention: "captain-input", attentionReason: "x".repeat(161) } }), `needs you: ${"x".repeat(159)}… (decision context invalid)`],
+  ];
+  for (const [legacyTask, expected] of legacyCaptainCases) {
+    const main = format.formatOverlayTaskLine(legacyTask, theme, true);
+    const details = format.formatCaptainDecisionLines(legacyTask, theme, 48, "  ");
+    assert.ok(!main.includes("needs you:"), "captain context is never inline");
+    assert.ok(details.length >= 1 && details.every((line) => tui.visibleWidth(line) <= 48));
+    assert.equal(format.formatAttentionSubtitle(legacyTask), expected);
+    assert.ok(details.join("\n").includes("needs you:"));
+  }
   for (const width of [1, 12, 24, 35]) {
     assert.ok(tui.visibleWidth(tui.truncateToWidth(legend, width, "…")) <= width);
   }
@@ -72,7 +85,10 @@ module.exports = async function testRenderer({ format, reducer, replay, sanitize
     [{ metadata: { attention: "waiting", attentionReason: "awaiting CI" }, blockedBy: [2] }, "awaiting CI"],
     [{ metadata: { attention: "waiting", attentionReason: "tests failed; fix assertion" } }, "tests failed; fix assertion"],
     [{ metadata: { attention: "stale" } }, "activity stale; awaiting update"],
-    [{ metadata: { attention: "captain-input" } }, "awaiting captain input"],
+    [{ metadata: { attention: "captain-input", attentionReason: "choose merge or hold PR 24" } }, "needs you: choose merge or hold PR 24"],
+    [{ metadata: { attention: "captain-input" } }, "needs you: Semantic title (decision context missing)"],
+    [{ description: "approve staging deployment", metadata: { attention: "captain-input" } }, "needs you: approve staging deployment (decision context missing)"],
+    [{ metadata: { attention: "captain-input", attentionReason: 42 } }, "needs you: Semantic title (decision context invalid)"],
     [{ metadata: { attention: "unknown", attentionReason: 42 } }, "pending; reason unknown"],
     [{ status: "completed", metadata: { attention: "captain-input", attentionReason: "old reason" } }, ""],
     [{ status: "deleted" }, ""],
@@ -107,14 +123,46 @@ module.exports = async function testRenderer({ format, reducer, replay, sanitize
   assert.equal(sanitize.normalizeLegacyTitleMarker(" ●  ● Semantic title"), "Semantic title");
   assert.equal(sanitize.normalizeLegacyTitleMarker("●"), "●");
   let current = { tasks: [], nextId: 1 };
-  current = reducer.applyTaskMutation(current, "create", {
+  const missingDecision = reducer.applyTaskMutation(current, "create", {
     subject: "● Ask captain",
     metadata: { attention: "captain-input" },
+  });
+  assert.equal(missingDecision.op.kind, "error");
+  assert.match(missingDecision.op.message, /attentionReason is required/);
+  const nullDecision = reducer.applyTaskMutation(current, "create", {
+    subject: "● Ask captain",
+    metadata: { attention: "captain-input", attentionReason: null },
+  });
+  assert.equal(nullDecision.op.kind, "error");
+  assert.match(nullDecision.op.message, /attentionReason is required/);
+  const missingUpdateDecision = reducer.applyTaskMutation(
+    { tasks: [base()], nextId: 2 },
+    "update",
+    { id: 1, metadata: { attention: "captain-input" } },
+  );
+  assert.equal(missingUpdateDecision.op.kind, "error");
+  assert.match(missingUpdateDecision.op.message, /attentionReason is required/);
+  const invalidDecision = reducer.applyTaskMutation(current, "create", {
+    subject: "● Ask captain",
+    metadata: { attention: "captain-input", attentionReason: "x".repeat(161) },
+  });
+  assert.equal(invalidDecision.op.kind, "error");
+  assert.match(invalidDecision.op.message, /at most 160 characters/);
+  current = reducer.applyTaskMutation(current, "create", {
+    subject: "● Ask captain",
+    metadata: { attention: "captain-input", attentionReason: " choose\nmerge or \x1b[31mhold PR 24 " },
   }).state;
   assert.equal(current.tasks[0].subject, "Ask captain");
+  assert.deepEqual(current.tasks[0].metadata, {
+    attention: "captain-input",
+    attentionReason: "choose merge or hold PR 24",
+  });
 
   // Captain answer -> waiting -> verified active -> paused transitions.
-  current = reducer.applyTaskMutation(current, "update", { id: 1, metadata: { attention: "waiting" } }).state;
+  current = reducer.applyTaskMutation(current, "update", {
+    id: 1,
+    metadata: { attention: "waiting", attentionReason: null },
+  }).state;
   assert.equal(format.classifyAttention(current.tasks[0]), "waiting");
   assert.equal(format.formatAttentionIndicator(current.tasks[0], theme), gray);
   current = reducer.applyTaskMutation(current, "update", {
@@ -153,7 +201,7 @@ module.exports = async function testRenderer({ format, reducer, replay, sanitize
   const tasks = [
     base({ id: 1 }),
     base({ id: 2, status: "in_progress", metadata: { attention: "agent-working" } }),
-    base({ id: 3, blockedBy: [1], metadata: { attention: "captain-input" } }),
+    base({ id: 3, subject: "Refresh TodoAttention", blockedBy: [1], metadata: { attention: "captain-input", attentionReason: "choose merge or hold PR 24" } }),
     base({ id: 4, status: "completed" }),
     base({ id: 5, status: "deleted" }),
   ];
@@ -171,6 +219,10 @@ module.exports = async function testRenderer({ format, reducer, replay, sanitize
   assert.ok(list.includes(green));
   assert.ok(list.includes(orange));
   assert.equal((list.match(/\x1b\[38;2;0;230;118m●\x1b\[39m/g) || []).length, 2);
+  const listLines = list.split("\n");
+  const listCaptain = listLines.findIndex((line) => line.includes("Refresh TodoAttention"));
+  assert.ok(listCaptain >= 0 && !listLines[listCaptain].includes("needs you:"));
+  assert.match(listLines[listCaptain + 1].replace(/\x1b\[[0-9;]*m/g, ""), /^    └─ needs you: choose merge or hold PR 24$/);
   const completedLine = list.split("\n").find((line) => line.includes("#4"));
   const deletedLine = list.split("\n").find((line) => line.includes("#5"));
   assert.ok(completedLine.includes(ansi(204, 255, 0, "✓")));
@@ -185,8 +237,18 @@ module.exports = async function testRenderer({ format, reducer, replay, sanitize
   assert.ok(update.includes("#2"));
   assert.ok(update.includes(green));
   assert.ok(!update.includes("needs you"), "mutation result stays legend-free");
-  const get = format.renderTodoResult({ details: { action: "get", params: { id: 3 }, tasks, nextId: 6 } }, theme).render(80).join("\n");
+  const getLines = format.renderTodoResult({ details: { action: "get", params: { id: 3 }, tasks, nextId: 6 } }, theme).render(80);
+  const get = getLines.join("\n");
   assert.ok(get.includes(orange));
+  assert.equal(getLines.length, 2);
+  assert.ok(getLines[0].includes("Refresh TodoAttention") && !getLines[0].includes("needs you:"));
+  assert.match(getLines[1].replace(/\x1b\[[0-9;]*m/g, ""), /^    └─ needs you: choose merge or hold PR 24$/);
+  for (const width of [12, 24, 40]) {
+    const narrowGet = format.renderTodoResult({ details: { action: "get", params: { id: 3 }, tasks, nextId: 6 } }, theme).render(width);
+    assert.ok(narrowGet.length >= 2);
+    assert.ok(narrowGet.every((line) => tui.visibleWidth(line) <= width));
+    assert.ok(narrowGet.slice(1).every((line) => /^    /.test(line.replace(/\x1b\[[0-9;]*m/g, ""))));
+  }
   const deleted = format.renderTodoResult({ details: { action: "delete", params: { id: 5 }, tasks, nextId: 6 } }, theme).render(80).join("\n");
   assert.ok(deleted.includes("#5"));
   assert.ok(!deleted.includes(gray) && !deleted.includes(green) && !deleted.includes(orange));
@@ -212,6 +274,10 @@ module.exports = async function testRenderer({ format, reducer, replay, sanitize
   assert.ok(notification.includes(legend));
   assert.ok(notification.includes(gray) && notification.includes(green) && notification.includes(orange));
   for (const label of ["working", "waiting", "needs you"]) assert.ok(notification.includes(label));
+  const commandLines = notification.split("\n");
+  const commandCaptain = commandLines.findIndex((line) => line.includes("Refresh TodoAttention"));
+  assert.ok(commandCaptain >= 0 && !commandLines[commandCaptain].includes("needs you:"));
+  assert.match(commandLines[commandCaptain + 1].replace(/\x1b\[[0-9;]*m/g, ""), /^    └─ needs you: choose merge or hold PR 24$/);
   assert.equal(JSON.stringify(store.getState("command-test")), commandStateBefore, "legend rendering never persists data");
 
   const dependencyState = { tasks: [preserved, base({ id: 2 })], nextId: 3 };

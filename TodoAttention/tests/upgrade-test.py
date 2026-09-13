@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise verified v1 -> v2 -> v3 -> v2 -> v1 -> npm."""
+"""Exercise verified v1 -> v2 -> v3 -> v4 and stepwise rollback."""
 import json
 import subprocess
 import sys
@@ -32,49 +32,54 @@ def install_old(name, patch_path):
         install.install(source, agent, False)
 
 
-v1_name = "rpiv-todo-2.9.0-attention-v1"
-v2_name = "rpiv-todo-2.9.0-attention-v2"
-v1_patch = install.LEGACY_RELEASES[v1_name]
-v2_patch = install.LEGACY_RELEASES[v2_name]
-install_old(v1_name, v1_patch)
-v1_manifest = json.loads(manifest_path.read_text())
-v1 = Path(v1_manifest["installedSource"])
-install_old(v2_name, v2_patch)
-v2_manifest = json.loads(manifest_path.read_text())
-v2 = Path(v2_manifest["installedSource"])
-assert v2_manifest["previousManifest"] == v1_manifest
-v2_files = {str(p.relative_to(v2)): p.read_bytes() for p in v2.rglob("*") if p.is_file()}
-v2_settings = settings_path.read_bytes()
-v2_manifest_bytes = manifest_path.read_bytes()
-v3 = v2.with_name(install.RELEASE_NAME)
+legacy = []
+previous_manifest = None
+for name in [
+    "rpiv-todo-2.9.0-attention-v1",
+    "rpiv-todo-2.9.0-attention-v2",
+    "rpiv-todo-2.9.0-attention-v3",
+]:
+    install_old(name, install.LEGACY_RELEASES[name])
+    manifest = json.loads(manifest_path.read_text())
+    release = Path(manifest["installedSource"])
+    if previous_manifest is not None:
+        assert manifest["previousManifest"] == previous_manifest
+    legacy.append((release, manifest))
+    previous_manifest = manifest
+
+v3, v3_manifest = legacy[-1]
+v3_files = {str(p.relative_to(v3)): p.read_bytes() for p in v3.rglob("*") if p.is_file()}
+v3_settings = settings_path.read_bytes()
+v3_manifest_bytes = manifest_path.read_bytes()
+v4 = v3.with_name(install.RELEASE_NAME)
 
 install.install(source, agent, True)
-assert settings_path.read_bytes() == v2_settings
-assert manifest_path.read_bytes() == v2_manifest_bytes
-assert not v3.exists()
+assert settings_path.read_bytes() == v3_settings
+assert manifest_path.read_bytes() == v3_manifest_bytes
+assert not v4.exists()
 
 # Refuse drift in the currently installed older release without touching config.
-v2_format = v2 / "view/format.ts"
-content = v2_format.read_bytes()
-v2_format.write_bytes(content.replace(b'"captain-input"', b'"drift-input"'))
+v3_format = v3 / "view/format.ts"
+content = v3_format.read_bytes()
+v3_format.write_bytes(content.replace(b'"captain-input"', b'"drift-input"'))
 try:
-    print("expecting v2 compatibility refusal for deliberately corrupted source", flush=True)
+    print("expecting v3 compatibility refusal for deliberately corrupted source", flush=True)
     try:
         install.install(source, agent, True)
     except subprocess.CalledProcessError:
         pass
     else:
-        raise AssertionError("expected v2 compatibility rejection")
+        raise AssertionError("expected v3 compatibility rejection")
 finally:
-    v2_format.write_bytes(content)
-assert settings_path.read_bytes() == v2_settings and not v3.exists()
+    v3_format.write_bytes(content)
+assert settings_path.read_bytes() == v3_settings and not v4.exists()
 
-# Fail exactly at v3 manifest publication after settings publication.
+# Fail exactly at v4 manifest publication after settings publication.
 atomic_json = install.atomic_json
 failed = False
 def fail_manifest_once(path, value):
     global failed
-    if path == manifest_path and value.get("installedSource") == str(v3) and not failed:
+    if path == manifest_path and value.get("installedSource") == str(v4) and not failed:
         failed = True
         raise OSError("injected manifest write failure")
     atomic_json(path, value)
@@ -85,24 +90,26 @@ with patch.object(install, "atomic_json", side_effect=fail_manifest_once):
         pass
     else:
         raise AssertionError("expected transaction failure")
-assert json.loads(settings_path.read_text()) == json.loads(v2_settings)
-assert json.loads(manifest_path.read_text()) == v2_manifest
-assert not v3.exists()
+assert json.loads(settings_path.read_text()) == json.loads(v3_settings)
+assert json.loads(manifest_path.read_text()) == v3_manifest
+assert not v4.exists()
 
 install.install(source, agent, False)
 install.install(source, agent, True)
 settings = json.loads(settings_path.read_text())
-assert settings["packages"] == ["/unrelated", {**original_entry, "source": str(v3)}]
+assert settings["packages"] == ["/unrelated", {**original_entry, "source": str(v4)}]
 settings["addedAfterUpgrade"] = 42
 settings_path.write_text(json.dumps(settings))
-assert v2_files == {str(p.relative_to(v2)): p.read_bytes() for p in v2.rglob("*") if p.is_file()}
-assert json.loads(manifest_path.read_text())["previousManifest"] == v2_manifest
+assert v3_files == {str(p.relative_to(v3)): p.read_bytes() for p in v3.rglob("*") if p.is_file()}
+assert json.loads(manifest_path.read_text())["previousManifest"] == v3_manifest
 
 # Every rollback preserves unrelated post-upgrade settings and restores one level.
-for expected_removed, expected_source, expected_manifest in [
-    (v3, v2, v2_manifest),
-    (v2, v1, v1_manifest),
-]:
+rollback_chain = [(v4, legacy[-1][0], legacy[-1][1])]
+rollback_chain.extend(
+    (legacy[index][0], legacy[index - 1][0], legacy[index - 1][1])
+    for index in range(len(legacy) - 1, 0, -1)
+)
+for expected_removed, expected_source, expected_manifest in rollback_chain:
     install.rollback(agent, True)
     assert expected_removed.exists()
     install.rollback(agent, False)
@@ -112,9 +119,10 @@ for expected_removed, expected_source, expected_manifest in [
     assert restored["addedAfterUpgrade"] == 42
     assert json.loads(manifest_path.read_text()) == expected_manifest
 
+v1 = legacy[0][0]
 install.rollback(agent, True)
 install.rollback(agent, False)
 assert not v1.exists() and not manifest_path.exists()
 assert json.loads(settings_path.read_text()) == {**original, "addedAfterUpgrade": 42}
 assert session.read_bytes() == session_before
-print("isolated v1/v2 upgrade/rollback/task preservation: ok")
+print("isolated v1/v2/v3 upgrade/rollback/task preservation: ok")
