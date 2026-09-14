@@ -28,3 +28,4 @@ Avoid storing secrets, tokens, private keys, or production credentials in this r
 - [`PiTelegramSetup/`](PiTelegramSetup/) — prepare and inspect a pinned Pi Telegram package without installing or connecting it.
 - [`HerdrTelegramNotifySetup/`](HerdrTelegramNotifySetup/) — prepare and inspect a pinned Herdr outbound Telegram notification plugin without activating it.
 - [`PonytailLitePilot/`](PonytailLitePilot/) — inspect, validate, and optionally run a pinned Ponytail lite package in isolated Pi state.
+- [`NixosWikiLocalSetup/`](NixosWikiLocalSetup/) — pinned project-local Pi integration for official NixOS/Nix documentation with WSL2 guest guidance.
