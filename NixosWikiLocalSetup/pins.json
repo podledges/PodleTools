@@ -1,0 +1,15 @@
+{
+  "package": "@firstpick/pi-extension-nixos-wiki-local",
+  "version": "0.1.7",
+  "npm_spec": "npm:@firstpick/pi-extension-nixos-wiki-local@0.1.7",
+  "npm_integrity": "sha512-4KXpkcsbBqrML2fM7e5dSxmaYK5D7PpTXv3P3jIHEF3qXOy8YQalDFFbo9DdKlwJJOMFmOaFrLfNY2H9Z9ZxSg==",
+  "npm_shasum": "4d04fb4c59b604cea9d7ac1880730844d0478e69",
+  "tarball_sha256": "a08ff49c7d181a96c3ec566bbd34119e81555259889ae2c694fb0ba72fdd39b0",
+  "inspected_files_sha256": {
+    "package/package.json": "a06ef889d770faf45af4ffe162ecce1a21942ec39013e12af61bb37a82be5fc0",
+    "package/index.ts": "cde5d6a14611cf3fdcb326b3ec2cdce664644e284f5700cc497ae4fbf5d0fd9e",
+    "package/README.md": "c5b3f01f185a805453fd95546b5e3454e8e368236452f008cf2d62e7f150f0b9",
+    "package/skills/nixos-local/references/safety-rules.md": "33c94cc4be667df709c132881f3eca57c5c89b5c953321d2b2ef00a5f5c267da",
+    "package/skills/nixos-local/references/non-nixos-host-policy.md": "00df077f019ae4ccd7966bf981c35ef9c43097a36fd78b9a4886386c097825d2"
+  }
+}
